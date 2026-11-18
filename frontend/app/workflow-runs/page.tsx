@@ -180,7 +180,15 @@ export default function WorkflowRunsPage() {
                 创建于 {selected.created_at ? new Date(selected.created_at).toLocaleString("zh-CN") : "未知"}，完成后写入 workflow 与 task 两级记录。
               </div>
             </div>
-          ) : <div className="text-sm text-mute">{loading ? "正在读取工作流记录..." : "请选择一条运行记录。"}</div>}
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-hair bg-surface-2/40 px-6 py-16 text-center">
+              <Workflow size={28} strokeWidth={1.5} className="text-dim" />
+              <div className="text-sm font-medium text-body">{loading ? "正在读取工作流记录…" : "暂无运行详情"}</div>
+              <div className="max-w-sm text-xs leading-5 text-mute">
+                在「工作台」对当前仓库发起一次工程目标，Planner 任务图、各 Agent 执行结果与综合结论会完整呈现在这里。
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </>
