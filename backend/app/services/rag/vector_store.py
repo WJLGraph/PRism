@@ -323,7 +323,7 @@ def add_document(
 ) -> Document:
     if source_type == "code_file":
         raise ValueError("源码必须通过工作区实时搜索，不能保存为 RAG Document")
-    vectorized = should_vectorize(source_type)
+    vectorized = should_vectorize(source_type) and settings.milvus_enabled
     vectors = [embed_text(f"{title}\n{content}", settings.embedding_dimensions)] if vectorized else []
     embedding_metadata = (
         {

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { FileText } from "lucide-react";
 
 import { Card, PageTitle, PrimaryButton } from "@/components/ui/card";
 import { apiGet, apiPost } from "@/lib/api";
 import type { Repository } from "@/lib/types";
+import { AppSelect } from "@/components/ui/select";
 
 type WeeklyReportResponse = {
   report_markdown: string;
@@ -57,39 +59,34 @@ export default function ReportsPage() {
     <>
       <PageTitle title="研发周报生成" description="按时间范围统计 Issues、PRs、Merged PRs、Open PRs 和失败 CI，生成适合发给团队负责人的 Markdown 周报。" />
 
-      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[360px_1fr] lg:h-[calc(100vh-13.5rem)]">
         <Card>
-          <div className="grid gap-4">
-            <label className="text-sm font-medium text-slate-700">
+          <div className="grid gap-5">
+            <label className="text-sm font-medium text-body">
               仓库
-              <select
-                className="mt-2 w-full rounded-md border border-line bg-white px-3 py-2 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              <AppSelect
+                className="mt-2 w-full"
                 value={repoId}
-                onChange={(event) => setRepoId(event.target.value)}
-              >
-                {repos.map((repo) => (
-                  <option key={repo.id} value={repo.id}>
-                    {repo.full_name}
-                  </option>
-                ))}
-              </select>
+                onChange={setRepoId}
+                options={repos.map((repo) => ({ value: repo.id, label: repo.full_name }))}
+              />
             </label>
 
-            <label className="text-sm font-medium text-slate-700">
+            <label className="text-sm font-medium text-body">
               开始日期
               <input
                 type="date"
-                className="mt-2 w-full rounded-md border border-line bg-white px-3 py-2 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                className="mt-2 w-full rounded-xl border border-hair bg-surface-2/60 px-3 py-2.5 text-sm text-ink outline-none transition focus:border-prism/40"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
             </label>
 
-            <label className="text-sm font-medium text-slate-700">
+            <label className="text-sm font-medium text-body">
               结束日期
               <input
                 type="date"
-                className="mt-2 w-full rounded-md border border-line bg-white px-3 py-2 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                className="mt-2 w-full rounded-xl border border-hair bg-surface-2/60 px-3 py-2.5 text-sm text-ink outline-none transition focus:border-prism/40"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
               />
@@ -101,12 +98,17 @@ export default function ReportsPage() {
           </div>
         </Card>
 
-        <Card>
-          <h2 className="font-semibold text-ink">Markdown 周报</h2>
+        <Card className="flex min-h-0 flex-col">
+          <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Markdown 周报</h2>
+          <div className="spectrum-rule mt-2.5 w-10" />
           {report ? (
-            <pre className="mt-4 max-h-[640px] overflow-auto rounded-md border border-slate-800 bg-slate-950 p-4 text-sm leading-7 text-slate-100">{report}</pre>
+            <pre className="mt-4 min-h-0 flex-1 overflow-auto rounded-xl border border-hair bg-canvas p-4 font-mono text-xs leading-7 text-ink">{report}</pre>
           ) : (
-            <div className="mt-4 rounded-md border border-line bg-panel p-4 text-sm text-slate-600">选择仓库和时间范围后生成周报。</div>
+            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/50 px-4 py-10 text-center">
+              <FileText size={22} strokeWidth={1.6} className="text-dim" />
+              <div className="text-sm font-medium text-body">周报将在这里生成</div>
+              <div className="max-w-[260px] text-xs leading-5 text-mute">选择仓库和时间范围，生成适合发给团队负责人的 Markdown 周报。</div>
+            </div>
           )}
         </Card>
       </div>

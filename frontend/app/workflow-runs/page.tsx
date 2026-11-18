@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Database, GitBranch, Workflow } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { apiGet } from "@/lib/api";
 import type { Repository } from "@/lib/types";
 import { PageTitle } from "@/components/ui/card";
+import { AppSelect } from "@/components/ui/select";
 
 type WorkflowTask = {
   id: string;
@@ -73,89 +76,111 @@ export default function WorkflowRunsPage() {
     <>
       <PageTitle title="工作流运行记录" description="按一次工程目标查看 Planner 任务图、各 Agent 执行结果、Observer 发现和最终综合结论。" />
 
-      <section className="grid gap-3 border-y border-line bg-white px-4 py-4 md:grid-cols-[minmax(280px,1fr)_repeat(3,minmax(150px,220px))]">
-        <label className="text-sm font-medium text-slate-700">
+      <section className="animate-fade-up stagger-1 grid gap-5 border-y border-hair bg-surface px-5 py-5 sm:grid-cols-2 md:grid-cols-[minmax(240px,1fr)_repeat(3,minmax(120px,1fr))]">
+        <label className="text-sm font-medium text-body">
           仓库
-          <select className="mt-2 w-full rounded-md border border-line bg-white px-3 py-2 outline-none focus:border-teal-500" value={repoId} onChange={(event) => setRepoId(event.target.value)}>
-            {repos.map((repo) => <option key={repo.id} value={repo.id}>{repo.full_name}</option>)}
-          </select>
+          <AppSelect
+            className="mt-2 w-full"
+            value={repoId}
+            onChange={setRepoId}
+            options={repos.map((repo) => ({ value: repo.id, label: repo.full_name }))}
+          />
         </label>
         <Metric icon={Workflow} label="工作流" value={runs.length} />
         <Metric icon={CheckCircle2} label="完成任务" value={completedTasks} />
         <Metric icon={AlertTriangle} label="Observer 发现" value={findings.length} />
       </section>
 
-      <div className="mt-4 grid min-h-[560px] gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="border-r border-line bg-white pr-4">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">运行列表</div>
-          <div className="space-y-2">
+      <div className="mt-5 grid min-h-[560px] gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-13.5rem)] lg:min-h-0">
+        <aside className="animate-fade-up stagger-2 flex min-h-0 flex-col border-r border-hair bg-surface pr-5">
+          <div className="mono-eyebrow mb-4">运行列表</div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {runs.map((run) => (
-              <button key={run.id} onClick={() => setSelectedId(run.id)} className={`w-full rounded-md border px-3 py-3 text-left transition ${selected?.id === run.id ? "border-teal-300 bg-teal-50" : "border-line bg-white hover:bg-panel"}`}>
-                <div className="line-clamp-2 text-sm font-semibold text-ink">{run.goal}</div>
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+              <button key={run.id} onClick={() => setSelectedId(run.id)} className={`w-full rounded-xl border px-3.5 py-3 text-left transition-all duration-500 ease-silk ${selected?.id === run.id ? "border-prism/40 bg-teal-50 shadow-card" : "border-hair bg-surface hover:border-prism/30 hover:bg-panel"}`}>
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${run.status === "completed" ? "bg-mint" : run.status === "failed" ? "bg-blush" : "bg-honey"}`} />
+                  <div className="min-w-0 flex-1 break-words text-sm font-medium leading-5 text-ink">{run.goal}</div>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between pl-4 text-[11px] text-mute">
                   <span>{statusLabel[run.status] || run.status}</span>
-                  <span>{run.created_at ? new Date(run.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                  <span className="font-mono">{run.created_at ? new Date(run.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                 </div>
               </button>
             ))}
-            {!loading && runs.length === 0 && <div className="rounded-md border border-dashed border-line p-4 text-sm text-slate-500">暂无工作流运行记录。</div>}
+            {!loading && runs.length === 0 && (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/60 px-4 py-8 text-center">
+                <Workflow size={22} strokeWidth={1.6} className="text-dim" />
+                <div className="text-sm font-medium text-body">暂无工作流运行记录</div>
+                <div className="max-w-xs text-xs leading-5 text-mute">
+                  到「工作台」发起一次 Issue 分析或 PR 审查，运行轨迹会自动出现在这里。
+                </div>
+              </div>
+            )}
           </div>
         </aside>
 
         <main className="min-w-0">
           {selected ? (
-            <div className="space-y-5">
-              <section className="border-b border-line pb-4">
+            <div className="space-y-6">
+              <section className="animate-fade-up stagger-2 border-b border-hair pb-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-teal-600 px-3 py-1 text-xs font-semibold text-white">{statusLabel[selected.status] || selected.status}</span>
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500"><GitBranch className="h-3.5 w-3.5" />{selected.spec.workflow_id || selected.id.slice(0, 8)}</span>
-                  <span className="inline-flex items-center gap-1 text-xs text-slate-500"><Database className="h-3.5 w-3.5" />已持久化</span>
+                  <span className="rounded-full bg-prism px-3 py-1 text-xs font-semibold text-white shadow-lift">{statusLabel[selected.status] || selected.status}</span>
+                  <span className="inline-flex items-center gap-1.5 font-mono text-xs text-mute"><GitBranch className="h-3.5 w-3.5 text-prism" />{selected.spec.workflow_id || selected.id.slice(0, 8)}</span>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Database className="h-3.5 w-3.5 text-mint" />已持久化</span>
                 </div>
-                <h2 className="mt-3 text-xl font-semibold text-ink">{selected.goal}</h2>
+                <h2 className="mt-4 break-words font-display text-lg font-semibold leading-relaxed tracking-tight2 text-ink">{selected.goal}</h2>
               </section>
 
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-semibold text-ink">Agent 执行链</h3>
-                  <span className="text-xs text-slate-500">{completedTasks}/{selected.tasks.length} 完成</span>
+              <section className="animate-fade-up stagger-3">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="mono-eyebrow">Agent 执行链</h3>
+                  <span className="font-mono text-xs text-mute">{completedTasks}/{selected.tasks.length} 完成</span>
                 </div>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {selected.tasks.map((task, index) => (
-                    <div key={task.id} className="relative rounded-md border border-line bg-white p-3">
+                    <div key={task.id} className="relative rounded-xl border border-hair bg-surface p-4 shadow-card card-lift hover:border-prism/30">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-50 text-xs font-semibold text-teal-700">{index + 1}</span>
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 font-mono text-xs font-semibold tabular-nums text-prism">{index + 1}</span>
+                        {task.status && /complet|succe/.test(task.status) ? <CheckCircle2 className="h-4 w-4 text-mint" /> : <Clock3 className="h-4 w-4 text-honey" />}
                       </div>
-                      <div className="mt-3 text-sm font-semibold text-ink">{task.agent_name}</div>
-                      <div className="mt-1 text-xs text-slate-500">{task.task_type}</div>
-                      <p className="mt-3 text-xs leading-5 text-slate-600">{task.summary || "任务已完成"}</p>
+                      <div className="mt-3 font-mono text-sm font-semibold text-ink">{task.agent_name}</div>
+                      <div className="mono-eyebrow mt-1">{task.task_type}</div>
+                      <p className="mt-3 break-words text-xs leading-5 text-body">{task.summary || "任务已完成"}</p>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.7fr)]">
-                <div className="rounded-md border border-teal-200 bg-teal-50/70 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-teal-900"><Workflow className="h-4 w-4" />Synthesis 最终结论</div>
-                  <p className="mt-3 text-sm leading-7 text-slate-700">{selected.final_answer}</p>
+              <section className="animate-fade-up stagger-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.7fr)]">
+                <div className="min-w-0 overflow-hidden rounded-xl border border-teal-200 bg-teal-50/70 p-5 shadow-card">
+                  <div className="mono-eyebrow mb-2 flex items-center gap-2 !text-prism"><Workflow className="h-4 w-4" />Synthesis · 最终结论</div>
+                  <div className="markdown-body mt-2 text-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.final_answer || "暂无结论"}</ReactMarkdown>
+                  </div>
                 </div>
-                <div className="rounded-md border border-amber-200 bg-amber-50/70 p-4">
-                  <div className="flex items-center justify-between gap-2 text-sm font-semibold text-amber-900">
+                <div className="min-w-0 overflow-hidden rounded-xl border border-honey/25 bg-panel p-5 shadow-card">
+                  <div className="flex items-center justify-between gap-2 text-sm font-semibold text-honey">
                     <span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Observer 交叉检查</span>
-                    {typeof selected.observation.confidence === "number" && <span className="text-xs">置信度 {Math.round(selected.observation.confidence * 100)}%</span>}
+                    {typeof selected.observation.confidence === "number" && <span className="font-mono text-xs tabular-nums">置信度 {Math.round(selected.observation.confidence * 100)}%</span>}
                   </div>
                   <div className="mt-3 space-y-2">
-                    {findings.map((finding, index) => <div key={index} className="text-sm leading-6 text-slate-700">{finding.message}</div>)}
+                    {findings.length ? (
+                      findings.map((finding, index) => <div key={index} className="text-sm leading-6 text-body">{finding.message}</div>)
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-hair bg-surface/60 px-3 py-4 text-center text-xs text-honey/80">
+                        未发现跨 Agent 结论冲突或风险信号，本次运行无需人工仲裁。
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>
 
-              <div className="flex items-center gap-2 border-t border-line pt-3 text-xs text-slate-500">
-                <Clock3 className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-2 border-t border-hair pt-4 text-xs text-mute">
+                <Clock3 className="h-3.5 w-3.5 text-dim" />
                 创建于 {selected.created_at ? new Date(selected.created_at).toLocaleString("zh-CN") : "未知"}，完成后写入 workflow 与 task 两级记录。
               </div>
             </div>
-          ) : <div className="text-sm text-slate-500">{loading ? "正在读取工作流记录..." : "请选择一条运行记录。"}</div>}
+          ) : <div className="text-sm text-mute">{loading ? "正在读取工作流记录..." : "请选择一条运行记录。"}</div>}
         </main>
       </div>
     </>
@@ -164,9 +189,9 @@ export default function WorkflowRunsPage() {
 
 function Metric({ icon: Icon, label, value }: { icon: typeof Workflow; label: string; value: number }) {
   return (
-    <div className="flex items-center gap-3 border-l border-line pl-4">
-      <Icon className="h-5 w-5 text-teal-700" />
-      <div><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-xl font-semibold text-ink">{value}</div></div>
+    <div className="flex items-center gap-3 border-l border-hair pl-4">
+      <Icon className="h-5 w-5 text-prism" />
+      <div className="min-w-0"><div className="mono-eyebrow">{label}</div><div className="mt-1 font-display text-2xl font-semibold tabular-nums tracking-tight2 text-ink">{value}</div></div>
     </div>
   );
 }

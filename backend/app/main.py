@@ -7,6 +7,7 @@ from sqlalchemy import inspect, text
 
 from app.api.routes import (
     action_drafts,
+    auth,
     chat,
     ci,
     code_graph,
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(repos.router, prefix="/api/repos", tags=["repos"])
     app.include_router(conversations.router, prefix="/api/repos", tags=["conversations"])
     app.include_router(workspaces.router, prefix="/api/workspaces", tags=["workspaces"])

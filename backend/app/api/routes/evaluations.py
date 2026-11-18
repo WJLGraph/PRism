@@ -281,7 +281,9 @@ async def rescore_eval(
         evaluation_set=evaluation_set,
         rescore_of=str(eval_id),
     )
-    target = EvalRun(name=f"rescore-{source.name}", result_json=queued)
+    # 剥离历史 rescore 前缀，避免多次重评分后名字变成 rescore-rescore-...
+    base_name = re.sub(r"^(?:rescore-)+", "", source.name)
+    target = EvalRun(name=f"rescore-{base_name}", result_json=queued)
     db.add(target)
     db.commit()
     db.refresh(target)

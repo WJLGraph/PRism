@@ -154,6 +154,22 @@ async def cancel_action_draft(
     return draft
 
 
+@router.delete("/{draft_id}", status_code=204)
+async def delete_action_draft(
+    draft_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("draft:create")),
+) -> None:
+    draft = db.get(ActionDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="未找到安全草稿")
+    if draft.status not in {"pending_confirmation", "cancelled", "failed"}:
+        raise HTTPException(status_code=400, detail="已执行的草稿含审计记录，不可删除；仅可删除待确认、已取消或执行失败的草稿")
+    write_audit_log(db, user=user, repo_id=draft.repo_id, action="action_draft.delete", target_type=draft.target_type, target_id=str(draft.id))
+    db.delete(draft)
+    db.commit()
+
+
 @router.post("/{draft_id}/confirm", response_model=ActionDraftConfirmResponse)
 async def confirm_action_draft(
     draft_id: UUID,

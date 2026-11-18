@@ -1,6 +1,8 @@
 """Repository checkout synchronization and code-graph analysis."""
 
 import asyncio
+import io
+import tarfile
 import logging
 import os
 import shutil
@@ -10,6 +12,7 @@ import re
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -162,6 +165,51 @@ def _is_git_work_tree(path: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip().lower() == "true"
 
 
+def _download_tarball(repo: Repository, token: str | None, branch: str) -> bytes:
+    """GitHub 不可达时的降级通道：直接从 codeload CDN 下载源码 tarball。
+
+    github.com 主站（git 智能协议）在某些网络环境下被重置，而
+    codeload.github.com（文件下载 CDN）通常可达，因此用它兜底。
+    """
+    url = f"https://codeload.github.com/{repo.full_name}/tar.gz/refs/heads/{quote(branch)}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
+        response = client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.content
+
+
+def _apply_tarball(archive: bytes, target: Path, keep_git: bool) -> None:
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
+        members = bundle.getmembers()
+        if not members:
+            raise RuntimeError("tarball 内容为空")
+        root = members[0].name.split("/")[0]
+        staging = target.parent / f".{target.name}.tarball-staging"
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True)
+        bundle.extractall(staging, filter="data")
+        source = staging / root
+        if not source.is_dir():
+            raise RuntimeError("tarball 结构异常：缺少顶层目录")
+        if keep_git and (target / ".git").exists():
+            for item in source.iterdir():
+                if item.name == ".git":
+                    continue
+                dest = target / item.name
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                elif dest.exists():
+                    dest.unlink()
+                shutil.move(str(item), str(dest))
+        else:
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.move(str(source), str(target))
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def _sync_checkout(repo: Repository, token: str | None) -> Path:
     stored_path = _stored_checkout_path(repo)
     checkout_mode = getattr(repo, "checkout_mode", None) or "managed"
@@ -184,7 +232,17 @@ def _sync_checkout(repo: Repository, token: str | None) -> Path:
             _run_git(["checkout", branch], cwd=target)
             _run_git(["pull", "--ff-only", "origin", branch], cwd=target)
         except subprocess.CalledProcessError as exc:
-            logger.warning("更新现有 checkout %s 失败，将使用缓存文件：%s", target, (exc.stderr or exc).strip())
+            git_error = (exc.stderr or exc).strip()
+            if repo.provider == "github" or "github.com" in (repo.clone_url or ""):
+                logger.warning("git 更新 %s 失败，尝试 codeload tarball 降级通道：%s", target, git_error)
+                try:
+                    _apply_tarball(_download_tarball(repo, token, branch), target, keep_git=True)
+                    logger.info("checkout %s 已通过 tarball 通道刷新", target)
+                    return target
+                except Exception as tar_exc:  # noqa: BLE001 - 降级链要兜住一切再回落缓存
+                    logger.warning("更新现有 checkout %s 失败，将使用缓存文件：%s", target, tar_exc)
+            else:
+                logger.warning("更新现有 checkout %s 失败，将使用缓存文件：%s", target, git_error)
         return target
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +254,13 @@ def _sync_checkout(repo: Repository, token: str | None) -> Path:
     if branch:
         clone_args.extend(["--branch", branch])
     clone_args.extend([clone_url, str(target)])
-    _run_git(clone_args)
+    try:
+        _run_git(clone_args)
+    except subprocess.CalledProcessError as exc:
+        if not (repo.provider == "github" or "github.com" in (repo.clone_url or "")):
+            raise
+        logger.info("git clone 不可达，切换 codeload tarball 降级通道：%s（git 错误：%s）", repo.full_name, (exc.stderr or exc).strip())
+        _apply_tarball(_download_tarball(repo, token, branch), target, keep_git=False)
     return target
 
 

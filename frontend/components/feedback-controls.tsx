@@ -87,8 +87,8 @@ export function FeedbackControls({
   }
 
   return (
-    <div className="mt-3 border-t border-line pt-2">
-      <div className="flex min-h-8 items-center gap-1">
+    <div className="mt-4 border-t border-hair pt-3">
+      <div className="flex min-h-8 items-center gap-1.5">
         <button
           type="button"
           title="回答有帮助"
@@ -96,8 +96,8 @@ export function FeedbackControls({
           aria-pressed={feedback?.rating === "helpful"}
           disabled={pending}
           onClick={() => void submit("helpful")}
-          className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            feedback?.rating === "helpful" ? "bg-emerald-50 text-emerald-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-500 ease-silk disabled:cursor-not-allowed disabled:opacity-50 ${
+            feedback?.rating === "helpful" ? "bg-mint/10 text-mint shadow-glow" : "text-mute hover:bg-surface-2 hover:text-body"
           }`}
         >
           {pending && !panelOpen ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
@@ -112,46 +112,46 @@ export function FeedbackControls({
             setPanelOpen(true);
             setError("");
           }}
-          className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            feedback?.rating === "unhelpful" ? "bg-rose-50 text-rose-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-500 ease-silk disabled:cursor-not-allowed disabled:opacity-50 ${
+            feedback?.rating === "unhelpful" ? "bg-blush/10 text-blush shadow-glow" : "text-mute hover:bg-surface-2 hover:text-body"
           }`}
         >
           <ThumbsDown className="h-4 w-4" />
         </button>
         {feedback && !panelOpen && (
-          <span className="ml-1 flex min-w-0 items-center gap-1 text-xs text-slate-500">
-            <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-mute">
+            <Check className="h-3.5 w-3.5 shrink-0 text-mint" />
             已记录
-            {feedback.run_id && <span className="truncate font-mono text-[11px]">trace {feedback.run_id.slice(0, 8)}</span>}
+            {feedback.run_id && <span className="truncate font-mono text-[11px] text-dim">trace {feedback.run_id.slice(0, 8)}</span>}
           </span>
         )}
       </div>
 
       {panelOpen && (
-        <div className="mt-2 max-w-xl rounded-md border border-rose-100 bg-rose-50/60 p-3">
+        <div className="animate-fade-up mt-3 max-w-xl rounded-xl border border-blush/20 bg-blush/5 p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-slate-700">这条回答哪里需要改进？</span>
+            <span className="text-xs font-medium text-body">这条回答哪里需要改进？</span>
             <button
               type="button"
               title="关闭"
               aria-label="关闭反馈"
               onClick={() => setPanelOpen(false)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-slate-700"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-mute transition-colors hover:bg-surface hover:text-body"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {REASONS.map((item) => (
               <button
                 key={item.value}
                 type="button"
                 aria-pressed={reason === item.value}
                 onClick={() => setReason(item.value)}
-                className={`rounded-md border px-2.5 py-1 text-xs transition ${
+                className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-500 ease-silk ${
                   reason === item.value
-                    ? "border-rose-300 bg-white text-rose-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                    ? "border-blush/40 bg-surface text-blush shadow-glow"
+                    : "border-hair bg-surface text-body hover:border-prism/30 hover:text-prism"
                 }`}
               >
                 {item.label}
@@ -164,15 +164,15 @@ export function FeedbackControls({
             rows={2}
             onChange={(event) => setComment(event.target.value)}
             placeholder="补充说明（可选）"
-            className="mt-2 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-700 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
+            className="mt-3 w-full resize-y rounded-lg border border-hair bg-surface-2/60 px-3 py-2 text-xs leading-6 text-ink outline-none transition focus:border-prism/40"
           />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-xs text-rose-600">{error}</span>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-xs text-blush">{error}</span>
             <button
               type="button"
               disabled={pending}
               onClick={() => void submit("unhelpful")}
-              className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-slate-800 px-3 text-xs font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-prism px-3.5 text-xs font-medium text-white shadow-lift transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               {pending && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
               提交反馈

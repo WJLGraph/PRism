@@ -411,7 +411,7 @@ class ChatAgent(BaseAgent):
             {"tools": "tool_action", "model": "model_decision", "limit": "max_steps_stop"},
         )
         graph.add_edge("max_steps_stop", END)
-        return graph.compile(name="chat_agent_tool_calling_graph")
+        return graph.compile()
 
     async def _stream_agent_graph(self, graph: Any, state: ConversationState) -> AsyncIterator[dict[str, Any]]:
         current_state: ConversationState = dict(state)

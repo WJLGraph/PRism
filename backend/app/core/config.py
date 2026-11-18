@@ -80,6 +80,8 @@ class Settings(BaseSettings):
 
     token_encryption_key: str = "change-me-in-local-dev"
     demo_mode: bool = True
+    admin_username: str = "admin"
+    admin_password: str = "prism2026"
     github_webhook_secret: str | None = None
     feishu_feedback_webhook_url: str | None = None
     feedback_trace_base_url: str | None = None

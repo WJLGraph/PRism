@@ -127,7 +127,8 @@ def _ensure_ragas_compatibility() -> None:
 
     Ragas imports the legacy ChatVertexAI module only for an isinstance check. The
     project does not use VertexAI, so a scoped placeholder keeps the supported
-    Collections API usable without downgrading LangChain/LangGraph.
+    Collections API usable whether langchain-community is absent entirely or
+    installed at a version that dropped the legacy module.
     """
 
     module_name = "langchain_community.chat_models.vertexai"
@@ -141,12 +142,26 @@ def _ensure_ragas_compatibility() -> None:
                 category=DeprecationWarning,
             )
             __import__(module_name)
-    except ModuleNotFoundError as exc:
-        if exc.name != module_name:
-            raise
-        shim = types.ModuleType(module_name)
-        shim.ChatVertexAI = type("ChatVertexAI", (), {})
-        sys.modules[module_name] = shim
+        return
+    except ModuleNotFoundError:
+        pass
+
+    # Either the whole langchain-community package is missing, or the installed
+    # version no longer ships the legacy module. Register minimal placeholder
+    # packages so Ragas' isinstance check keeps working without a real install.
+    parent = sys.modules.get("langchain_community")
+    if parent is None:
+        parent = types.ModuleType("langchain_community")
+        parent.__path__ = []
+        sys.modules["langchain_community"] = parent
+    chat_models = sys.modules.get("langchain_community.chat_models")
+    if chat_models is None:
+        chat_models = types.ModuleType("langchain_community.chat_models")
+        chat_models.__path__ = []
+        sys.modules["langchain_community.chat_models"] = chat_models
+    shim = types.ModuleType(module_name)
+    shim.ChatVertexAI = type("ChatVertexAI", (), {})
+    sys.modules[module_name] = shim
 
 
 class RagasCollectionsScorer:
