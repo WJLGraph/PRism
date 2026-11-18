@@ -1,6 +1,11 @@
 import { authHeaders } from "./auth";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+/**
+ * 同源相对路径：永远请求当前页面的域名。
+ * 生产由 Nginx 把 /api、/a2a 反代到后端；本地开发由 next.config.js 的 rewrites 代理到 8001。
+ * 这样不再依赖构建期注入 NEXT_PUBLIC_API_BASE_URL，避免打包产物写死地址。
+ */
+export const API_BASE_URL = "";
 
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", headers: authHeaders() });

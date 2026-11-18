@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, FileText, Radio, RefreshCw, Search, Send, Square } from "lucide-react";
 
-import { API_BASE_URL } from "@/lib/api";
 import {
   A2A_CARD_URL,
   A2A_ENDPOINT,
@@ -124,7 +123,7 @@ export function A2aWorkspace() {
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardLoading, setCardLoading] = useState(true);
 
-  const [peerBase, setPeerBase] = useState(API_BASE_URL);
+  const [peerBase, setPeerBase] = useState("");
   const [peerCard, setPeerCard] = useState<AgentCard | null>(null);
   const [peerError, setPeerError] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
@@ -174,10 +173,11 @@ export function A2aWorkspace() {
   const pushFrame = (frame: A2aFrame) => setFrames((prev) => [...prev, frame].slice(-200));
 
   function resolveEndpoint(): string {
-    const base = peerBase.trim() || API_BASE_URL;
+    const base = peerBase.trim() || A2A_ENDPOINT;
     if (peerCard?.url) {
       try {
-        return ensureTrailingSlash(new URL(peerCard.url, base).toString());
+        const origin = typeof window === "undefined" ? "http://127.0.0.1:8001" : window.location.origin;
+        return ensureTrailingSlash(new URL(peerCard.url, origin).toString());
       } catch {
         /* 非法 url 时回退本机端点 */
       }
@@ -186,14 +186,15 @@ export function A2aWorkspace() {
   }
 
   async function discover() {
-    const base = peerBase.trim() || API_BASE_URL;
+    const custom = peerBase.trim();
+    const base = custom || A2A_ENDPOINT;
     setDiscovering(true);
     setPeerError(null);
     try {
       setPeerCard(await fetchAgentCard(base));
     } catch (err) {
       setPeerCard(null);
-      setPeerError(friendlyA2aError(err, /localhost|127\.0\.0\.1/.test(base)));
+      setPeerError(friendlyA2aError(err, !custom || /localhost|127\.0\.0\.1/.test(custom)));
     } finally {
       setDiscovering(false);
     }

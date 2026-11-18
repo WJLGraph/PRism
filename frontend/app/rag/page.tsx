@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { apiDelete, apiGet, apiPost, apiUpload } from "@/lib/api";
+import { newId } from "@/lib/id";
 import type { Repository } from "@/lib/types";
 import { AppSelect } from "@/components/ui/select";
 
@@ -218,7 +219,7 @@ export default function RAGPage() {
   async function ask() {
     const prompt = question.trim();
     if (!repoId || !prompt || busy) return;
-    setTurns((current) => [...current, { id: crypto.randomUUID(), role: "user", content: prompt }]);
+    setTurns((current) => [...current, { id: newId(), role: "user", content: prompt }]);
     setQuestion("");
     setBusy("ask");
     setError(null);
@@ -228,7 +229,7 @@ export default function RAGPage() {
       setTurns((current) => [
         ...current,
         {
-          id: crypto.randomUUID(),
+          id: newId(),
           role: "assistant",
           content: result.answer,
           mode: result.generation_mode,
@@ -238,7 +239,7 @@ export default function RAGPage() {
       ]);
     } catch (askError) {
       setError(errorMessage(askError));
-      setTurns((current) => [...current, { id: crypto.randomUUID(), role: "assistant", content: "请求失败，请检查后端配置后重试。", mode: "no_evidence" }]);
+      setTurns((current) => [...current, { id: newId(), role: "assistant", content: "请求失败，请检查后端配置后重试。", mode: "no_evidence" }]);
     } finally {
       setBusy(null);
     }

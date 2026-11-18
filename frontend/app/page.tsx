@@ -37,6 +37,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { apiDelete, apiGet, apiPost, apiPostStream, apiUpload } from "@/lib/api";
+import { newId } from "@/lib/id";
 import type { Repository } from "@/lib/types";
 import { FeedbackControls, type ChatFeedbackRecord } from "@/components/feedback-controls";
 import { AppSelect } from "@/components/ui/select";
@@ -589,7 +590,7 @@ type WorkspaceTab = (typeof workspaceTabs)[number];
 const DRAFT_CONVERSATION_PREFIX = "draft:";
 
 function makeDraftConversationId(repoId: string) {
-  return `${DRAFT_CONVERSATION_PREFIX}${repoId}:${crypto.randomUUID()}`;
+  return `${DRAFT_CONVERSATION_PREFIX}${repoId}:${newId()}`;
 }
 
 function isDraftConversationId(value: string) {
@@ -2211,10 +2212,10 @@ export default function DashboardPage() {
     const activeConversation = await ensureActiveConversation(trimmedText);
     if (!activeConversation) return;
 
-    const cardId = `a2a-${crypto.randomUUID()}`;
+    const cardId = `a2a-${newId()}`;
     setMessages((items) => [
       ...items,
-      { id: crypto.randomUUID(), role: "user", content: trimmedText },
+      { id: newId(), role: "user", content: trimmedText },
       {
         id: cardId,
         role: "assistant",
@@ -2256,7 +2257,7 @@ export default function DashboardPage() {
           const summary = content.answer_preview ?? res.error ?? "";
           if (toolUseId.endsWith("_observer")) {
             appendA2aEvent(cardId, {
-              id: crypto.randomUUID(),
+              id: newId(),
               kind: "observer",
               agentName: "Observer",
               objective: "复核各 Agent 产出质量与一致性",
@@ -2267,7 +2268,7 @@ export default function DashboardPage() {
           }
           if (toolUseId.includes("_replan_")) {
             appendA2aEvent(cardId, {
-              id: crypto.randomUUID(),
+              id: newId(),
               kind: "replan",
               agentName: "主控 Agent · Planner",
               objective: "根据执行情况重新规划",
@@ -2279,7 +2280,7 @@ export default function DashboardPage() {
           const task = data.plan.tasks.find((item) => toolUseId.endsWith(`_${item.id}`));
           if (task) {
             appendA2aEvent(cardId, {
-              id: crypto.randomUUID(),
+              id: newId(),
               kind: "task",
               agentName: task.agent_name,
               taskType: task.task_type,
@@ -2336,8 +2337,8 @@ export default function DashboardPage() {
     const activeConversation = await ensureActiveConversation(trimmedText);
     if (!activeConversation) return;
 
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: trimmedText };
-    const assistantId = crypto.randomUUID();
+    const userMessage: ChatMessage = { id: newId(), role: "user", content: trimmedText };
+    const assistantId = newId();
     const chatHistory = recentChatHistory();
     setMessages((items) => [...items, userMessage]);
     setMessage("");
@@ -2365,7 +2366,7 @@ export default function DashboardPage() {
           const data = rawData as { content?: string };
           if (data.content?.trim()) {
             appendAssistantTrace(assistantId, {
-              id: crypto.randomUUID(),
+              id: newId(),
               kind: "thinking",
               title: "公开思路",
               content: data.content,
@@ -2375,11 +2376,11 @@ export default function DashboardPage() {
           return;
         }
         if (event === "tool_use") {
-          appendAssistantTrace(assistantId, makeToolUseTrace(rawData as ChatStreamToolUse, crypto.randomUUID()));
+          appendAssistantTrace(assistantId, makeToolUseTrace(rawData as ChatStreamToolUse, newId()));
           return;
         }
         if (event === "tool_result") {
-          updateAssistantToolTrace(assistantId, makeToolResultTrace(rawData as ChatStreamToolResult, crypto.randomUUID()));
+          updateAssistantToolTrace(assistantId, makeToolResultTrace(rawData as ChatStreamToolResult, newId()));
           return;
         }
         if (event === "delta") {
@@ -2450,8 +2451,8 @@ export default function DashboardPage() {
     const activeConversation = await ensureActiveConversation(trimmedText);
     if (!activeConversation) return;
 
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: trimmedText };
-    const assistantId = crypto.randomUUID();
+    const userMessage: ChatMessage = { id: newId(), role: "user", content: trimmedText };
+    const assistantId = newId();
     const chatHistory = recentChatHistory();
     setMessages((items) => [
       ...items,
@@ -2549,11 +2550,11 @@ export default function DashboardPage() {
         context: chatRequestContext(chatHistory)
       }, (event, rawData) => {
         if (event === "tool_use") {
-          appendAssistantTrace(messageId, makeToolUseTrace(rawData as ChatStreamToolUse, crypto.randomUUID()));
+          appendAssistantTrace(messageId, makeToolUseTrace(rawData as ChatStreamToolUse, newId()));
           return;
         }
         if (event === "tool_result") {
-          updateAssistantToolTrace(messageId, makeToolResultTrace(rawData as ChatStreamToolResult, crypto.randomUUID()));
+          updateAssistantToolTrace(messageId, makeToolResultTrace(rawData as ChatStreamToolResult, newId()));
           return;
         }
         if (event === "delta") {
