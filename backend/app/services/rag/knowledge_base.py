@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from app.services.rag.embeddings import (
 from app.services.rag.rerank import rerank_documents
 from app.services.rag.retrieval import expand_parent_context, search_similar_documents
 from app.services.rag.source_policy import normalize_source_types, should_vectorize
+
+logger = logging.getLogger(__name__)
 
 
 def as_uuid(value: str | uuid.UUID) -> uuid.UUID:
@@ -243,15 +246,33 @@ async def retrieve_knowledge(
         should_vectorize(source_type) for source_type in effective_source_types
     )
     query_embedding = None
+    embedding_stage: dict[str, Any] = {"name": "query_embedding", "status": "skipped"}
     if method in {"vector", "hybrid"} and has_vector_sources:
-        query_embedding = embed_knowledge_query(
-            query,
-            provider=config.embedding_provider,
-            model=config.embedding_model,
-            dimensions=config.embedding_dimensions,
-        )
+        try:
+            query_embedding = embed_knowledge_query(
+                query,
+                provider=config.embedding_provider,
+                model=config.embedding_model,
+                dimensions=config.embedding_dimensions,
+            )
+            embedding_stage.update({"status": "success", "provider": config.embedding_provider})
+        except Exception as exc:
+            # 本地 embedding 依赖缺失（例如未安装 sentence-transformers）时不应让整条问答链路 500，
+            # 直接降级为关键词检索，前端状态条会显示「降级（关键词检索）」。
+            logger.warning("Query embedding unavailable (%s), falling back to keyword retrieval", type(exc).__name__)
+            query_embedding = None
+            if method == "vector":
+                method = "fulltext"
+            embedding_stage.update(
+                {
+                    "status": "failed",
+                    "provider": config.embedding_provider,
+                    "fallback": "keyword",
+                    "reason": type(exc).__name__,
+                }
+            )
     candidate_limit = min(max(resolved_top_k * (8 if use_rerank else 2), 20), 100)
-    pipeline_trace: dict[str, Any] = {}
+    pipeline_trace: dict[str, Any] = {"stages": [embedding_stage]}
     items = search_similar_documents(
         db,
         repo_id,
@@ -300,17 +321,33 @@ async def retrieve_knowledge(
     pipeline_trace["stages"].append(parent_stage)
 
     before_threshold = len(items)
-    if threshold_on:
+    embedding_degraded = embedding_stage.get("status") == "failed"
+    effective_threshold_on = threshold_on and not embedding_degraded
+    if threshold_on and embedding_degraded:
+        # 相似度阈值是按向量余弦分数标定的；降级为关键词检索后分数口径不同，
+        # 继续套用会把全部候选过滤掉，所以这里自动放宽。
+        pipeline_trace["stages"].append(
+            {
+                "name": "score_threshold",
+                "enabled": False,
+                "threshold": None,
+                "reason": "embedding_unavailable_relaxed",
+                "input_count": before_threshold,
+                "output_count": before_threshold,
+            }
+        )
+    if effective_threshold_on:
         items = [item for item in items if float(item.get("score") or 0.0) >= threshold]
-    pipeline_trace["stages"].append(
-        {
-            "name": "score_threshold",
-            "enabled": threshold_on,
-            "threshold": threshold if threshold_on else None,
-            "input_count": before_threshold,
-            "output_count": len(items),
-        }
-    )
+    if not (threshold_on and embedding_degraded):
+        pipeline_trace["stages"].append(
+            {
+                "name": "score_threshold",
+                "enabled": effective_threshold_on,
+                "threshold": threshold if effective_threshold_on else None,
+                "input_count": before_threshold,
+                "output_count": len(items),
+            }
+        )
 
     context_budget_tokens = min(1800, max(520, resolved_top_k * 260))
     compression_input_count = len(items)
@@ -335,7 +372,7 @@ async def retrieve_knowledge(
         query,
         items,
         score_threshold=threshold,
-        threshold_enabled=threshold_on,
+        threshold_enabled=threshold_on and not embedding_degraded,
     )
     for item in items:
         retrieval = dict(item.get("retrieval") or {})

@@ -59,6 +59,7 @@ class ChatHistoryMessage(BaseModel):
     progressive_compaction: dict = {}
     model_usage: list[dict] = []
     context_diagnostics: dict = {}
+    a2a_group: bool = False
     created_at: str | None = None
 
 

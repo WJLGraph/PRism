@@ -13,6 +13,7 @@ def test_sync_checkout_uses_cached_checkout_when_update_fails(tmp_path, monkeypa
         full_name="owner/repo",
         clone_url="https://github.com/owner/repo.git",
         default_branch="main",
+        provider="github",
     )
     checkout = code_analysis._repo_checkout_path(repo)
     (checkout / ".git").mkdir(parents=True)

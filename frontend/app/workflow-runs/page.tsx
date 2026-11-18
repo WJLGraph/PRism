@@ -74,118 +74,134 @@ export default function WorkflowRunsPage() {
 
   return (
     <>
-      <PageTitle title="工作流运行记录" description="按一次工程目标查看 Planner 任务图、各 Agent 执行结果、Observer 发现和最终综合结论。" />
+      <PageTitle
+        eyebrow="03 / Agent execution"
+        title="工作流运行记录"
+        description="按一次工程目标查看 Planner 任务图、各 Agent 执行结果、Observer 发现和最终综合结论。"
+      />
 
-      <section className="animate-fade-up stagger-1 grid gap-5 border-y border-hair bg-surface px-5 py-5 sm:grid-cols-2 md:grid-cols-[minmax(240px,1fr)_repeat(3,minmax(120px,1fr))]">
-        <label className="text-sm font-medium text-body">
-          仓库
-          <AppSelect
-            className="mt-2 w-full"
-            value={repoId}
-            onChange={setRepoId}
-            options={repos.map((repo) => ({ value: repo.id, label: repo.full_name }))}
-          />
-        </label>
+      <section className="page-summary-strip">
+        <div className="flex items-end gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="mono-eyebrow">Repository</div>
+            <AppSelect
+              className="mt-2"
+              value={repoId}
+              onChange={setRepoId}
+              options={repos.map((repo) => ({ value: repo.id, label: repo.full_name }))}
+            />
+          </div>
+        </div>
         <Metric icon={Workflow} label="工作流" value={runs.length} />
-        <Metric icon={CheckCircle2} label="完成任务" value={completedTasks} />
-        <Metric icon={AlertTriangle} label="Observer 发现" value={findings.length} />
+        <Metric icon={CheckCircle2} label="完成任务 / Observer 发现" value={`${completedTasks} / ${findings.length}`} />
       </section>
 
-      <div className="mt-5 grid min-h-[560px] gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-8rem)] lg:min-h-0">
-        <aside className="animate-fade-up stagger-2 flex min-h-0 flex-col border-r border-hair bg-surface pr-5">
-          <div className="mono-eyebrow mb-4">运行列表</div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <div className="page-grid grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="page-column">
+          <div className="page-kicker">Runs / 01</div>
+          <h2 className="page-section-title">运行列表</h2>
+          <div className="mt-5 flex flex-1 flex-col gap-2">
             {runs.map((run) => (
-              <button key={run.id} onClick={() => setSelectedId(run.id)} className={`w-full rounded-xl border px-3.5 py-3 text-left transition-all duration-500 ease-silk ${selected?.id === run.id ? "border-prism/40 bg-teal-50 shadow-card" : "border-hair bg-surface hover:border-prism/30 hover:bg-panel"}`}>
+              <button
+                key={run.id}
+                type="button"
+                onClick={() => setSelectedId(run.id)}
+                className={`w-full border px-3.5 py-3 text-left transition ${
+                  selected?.id === run.id ? "border-l-2 border-l-prism border-hair bg-teal-50" : "border-hair hover:border-ink/25"
+                }`}
+              >
                 <div className="flex items-start gap-2.5">
                   <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${run.status === "completed" ? "bg-mint" : run.status === "failed" ? "bg-blush" : "bg-honey"}`} />
-                  <div className="min-w-0 flex-1 break-words text-sm font-medium leading-5 text-ink">{run.goal}</div>
+                  <div className="min-w-0 flex-1 break-words text-sm font-medium leading-6 text-ink">{run.goal}</div>
                 </div>
-                <div className="mt-1.5 flex items-center justify-between pl-4 text-[11px] text-mute">
+                <div className="mt-2 flex items-center justify-between pl-4 text-[10px] text-mute">
                   <span>{statusLabel[run.status] || run.status}</span>
                   <span className="font-mono">{run.created_at ? new Date(run.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                 </div>
               </button>
             ))}
             {!loading && runs.length === 0 && (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/60 px-4 py-8 text-center">
-                <Workflow size={22} strokeWidth={1.6} className="text-dim" />
-                <div className="text-sm font-medium text-body">暂无工作流运行记录</div>
-                <div className="max-w-xs text-xs leading-5 text-mute">
-                  到「工作台」发起一次 Issue 分析或 PR 审查，运行轨迹会自动出现在这里。
+              <div className="page-empty">
+                <div>
+                  <Workflow className="mx-auto mb-3 h-6 w-6 text-dim" />
+                  暂无工作流运行记录
+                  <p className="mt-2 text-xs">到「工作台」发起一次 Issue 分析或 PR 审查，运行轨迹会自动出现在这里。</p>
                 </div>
               </div>
             )}
           </div>
         </aside>
 
-        <main className="min-w-0">
+        <main className="page-column">
           {selected ? (
-            <div className="space-y-6">
-              <section className="animate-fade-up stagger-2 border-b border-hair pb-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-prism px-3 py-1 text-xs font-semibold text-white shadow-lift">{statusLabel[selected.status] || selected.status}</span>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-xs text-mute"><GitBranch className="h-3.5 w-3.5 text-prism" />{selected.spec.workflow_id || selected.id.slice(0, 8)}</span>
-                  <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Database className="h-3.5 w-3.5 text-mint" />已持久化</span>
-                </div>
-                <h2 className="mt-4 break-words font-display text-lg font-semibold leading-relaxed tracking-tight2 text-ink">{selected.goal}</h2>
-              </section>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`border px-3 py-1 text-xs font-medium ${selected.status === "failed" ? "border-blush/35 text-blush" : "border-mint/35 text-mint"}`}>
+                  {statusLabel[selected.status] || selected.status}
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-mute"><GitBranch className="h-3.5 w-3.5 text-prism" />{selected.spec.workflow_id || selected.id.slice(0, 8)}</span>
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-mute"><Database className="h-3.5 w-3.5 text-mint" />已持久化</span>
+              </div>
+              <h2 className="mt-5 max-w-5xl break-words font-display text-[clamp(1.8rem,3vw,3.15rem)] font-semibold leading-[1.08] tracking-tight2 text-ink">{selected.goal}</h2>
+              <div className="mt-7 h-px bg-hair" />
 
-              <section className="animate-fade-up stagger-3">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="mono-eyebrow">Agent 执行链</h3>
+              <section className="pt-7">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <div className="page-kicker">Agent chain / 02</div>
+                    <h3 className="page-section-title">执行链</h3>
+                  </div>
                   <span className="font-mono text-xs text-mute">{completedTasks}/{selected.tasks.length} 完成</span>
                 </div>
-                <div className="grid gap-3 md:grid-cols-[repeat(auto-fit,minmax(230px,1fr))]">
+                <div className="mt-5 grid gap-px bg-hair md:grid-cols-2 xl:grid-cols-3">
                   {selected.tasks.map((task, index) => (
-                    <div key={task.id} className="relative rounded-xl border border-hair bg-surface p-4 shadow-card card-lift hover:border-prism/30">
+                    <article key={task.id} className="bg-surface p-5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 font-mono text-xs font-semibold tabular-nums text-prism">{index + 1}</span>
+                        <span className="font-mono text-[10px] tabular-nums text-prism">{String(index + 1).padStart(2, "0")}</span>
                         {task.status && /complet|succe/.test(task.status) ? <CheckCircle2 className="h-4 w-4 text-mint" /> : <Clock3 className="h-4 w-4 text-honey" />}
                       </div>
-                      <div className="mt-3 font-mono text-sm font-semibold text-ink">{task.agent_name}</div>
+                      <h4 className="mt-4 font-mono text-sm font-medium text-ink">{task.agent_name}</h4>
                       <div className="mono-eyebrow mt-1">{task.task_type}</div>
-                      <p className="mt-3 break-words text-xs leading-5 text-body">{task.summary || "任务已完成"}</p>
-                    </div>
+                      <p className="mt-3 break-words text-xs leading-6 text-body">{task.summary || "任务已完成"}</p>
+                    </article>
                   ))}
                 </div>
               </section>
 
-              <section className="animate-fade-up stagger-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.7fr)]">
-                <div className="min-w-0 overflow-hidden rounded-xl border border-teal-200 bg-teal-50/70 p-5 shadow-card">
-                  <div className="mono-eyebrow mb-2 flex items-center gap-2 !text-prism"><Workflow className="h-4 w-4" />Synthesis · 最终结论</div>
-                  <div className="markdown-body mt-2 text-sm">
+              <section className="mt-8 grid gap-px bg-hair xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="bg-teal-50 p-6">
+                  <div className="page-kicker">Synthesis / 03</div>
+                  <h3 className="page-section-title">最终结论</h3>
+                  <div className="markdown-body mt-5 text-sm">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.final_answer || "暂无结论"}</ReactMarkdown>
                   </div>
                 </div>
-                <div className="min-w-0 overflow-hidden rounded-xl border border-honey/25 bg-panel p-5 shadow-card">
-                  <div className="flex items-center justify-between gap-2 text-sm font-semibold text-honey">
-                    <span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Observer 交叉检查</span>
-                    {typeof selected.observation.confidence === "number" && <span className="font-mono text-xs tabular-nums">置信度 {Math.round(selected.observation.confidence * 100)}%</span>}
+                <div className="bg-surface p-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="inline-flex items-center gap-2 text-sm font-medium text-honey"><AlertTriangle className="h-4 w-4" />Observer 交叉检查</h3>
+                    {typeof selected.observation.confidence === "number" && <span className="font-mono text-[10px] tabular-nums text-mute">{Math.round(selected.observation.confidence * 100)}%</span>}
                   </div>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-5 space-y-3">
                     {findings.length ? (
-                      findings.map((finding, index) => <div key={index} className="text-sm leading-6 text-body">{finding.message}</div>)
+                      findings.map((finding, index) => <div key={index} className="border-l-2 border-honey/70 pl-3 text-xs leading-6 text-body">{finding.message}</div>)
                     ) : (
-                      <div className="rounded-xl border border-dashed border-hair bg-surface/60 px-3 py-4 text-center text-xs text-honey/80">
-                        未发现跨 Agent 结论冲突或风险信号，本次运行无需人工仲裁。
-                      </div>
+                      <div className="border border-dashed border-hair px-3 py-5 text-center text-xs text-mute">未发现跨 Agent 结论冲突或风险信号。</div>
                     )}
                   </div>
                 </div>
               </section>
 
-              <div className="flex items-center gap-2 border-t border-hair pt-4 text-xs text-mute">
+              <div className="mt-6 flex items-center gap-2 border-t border-hair pt-4 text-xs text-mute">
                 <Clock3 className="h-3.5 w-3.5 text-dim" />
                 创建于 {selected.created_at ? new Date(selected.created_at).toLocaleString("zh-CN") : "未知"}，完成后写入 workflow 与 task 两级记录。
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-hair bg-surface-2/40 px-6 py-16 text-center">
-              <Workflow size={28} strokeWidth={1.5} className="text-dim" />
-              <div className="text-sm font-medium text-body">{loading ? "正在读取工作流记录…" : "暂无运行详情"}</div>
-              <div className="max-w-sm text-xs leading-5 text-mute">
-                在「工作台」对当前仓库发起一次工程目标，Planner 任务图、各 Agent 执行结果与综合结论会完整呈现在这里。
+            <div className="page-empty">
+              <div>
+                <Workflow className="mx-auto mb-3 h-7 w-7 text-dim" />
+                {loading ? "正在读取工作流记录…" : "暂无运行详情"}
+                <p className="mt-2 max-w-md text-xs leading-6">在「工作台」对当前仓库发起一次工程目标，Planner 任务图、各 Agent 执行结果与综合结论会完整呈现在这里。</p>
               </div>
             </div>
           )}
@@ -195,11 +211,11 @@ export default function WorkflowRunsPage() {
   );
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof Workflow; label: string; value: number }) {
+function Metric({ icon: Icon, label, value }: { icon: typeof Workflow; label: string; value: number | string }) {
   return (
-    <div className="flex items-center gap-3 border-l border-hair pl-4">
-      <Icon className="h-5 w-5 text-prism" />
-      <div className="min-w-0"><div className="mono-eyebrow">{label}</div><div className="mt-1 font-display text-2xl font-semibold tabular-nums tracking-tight2 text-ink">{value}</div></div>
+    <div>
+      <div className="flex items-center gap-2"><Icon className="h-4 w-4 text-prism" /><div className="mono-eyebrow">{label}</div></div>
+      <div className="mt-2 font-display text-2xl font-semibold tabular-nums text-ink">{value}</div>
     </div>
   );
 }

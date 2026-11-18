@@ -16,9 +16,10 @@ import {
   Gauge,
   GitPullRequest,
   ListTodo,
-  Network,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RefreshCw,
   Search,
@@ -27,6 +28,7 @@ import {
   Square,
   Trash2,
   Upload,
+  Users,
   Wrench,
   X,
   XCircle,
@@ -38,6 +40,8 @@ import { apiDelete, apiGet, apiPost, apiPostStream, apiUpload } from "@/lib/api"
 import type { Repository } from "@/lib/types";
 import { FeedbackControls, type ChatFeedbackRecord } from "@/components/feedback-controls";
 import { AppSelect } from "@/components/ui/select";
+import { A2aStatusPill, A2aWorkspace } from "@/components/workspace/a2a-panel";
+import { A2aDiscussionCard, type A2aAgentEvent, type A2aPhase } from "@/components/chat/a2a-discussion";
 
 type Issue = {
   id: string;
@@ -282,6 +286,7 @@ type ChatHistoryMessage = {
   progressive_compaction?: Record<string, unknown>;
   model_usage?: Array<Record<string, unknown>>;
   context_diagnostics?: Record<string, unknown>;
+  a2a_group?: boolean;
   created_at?: string | null;
 };
 
@@ -335,6 +340,10 @@ type ChatMessage = {
   workflowPlan?: WorkflowPlan;
   planSourceMessage?: string;
   planStatus?: "ready" | "executing" | "done" | "error";
+  a2aQuestion?: string;
+  a2aPhase?: A2aPhase;
+  a2aEvents?: A2aAgentEvent[];
+  a2aError?: string;
   feedback?: ChatFeedbackRecord;
 };
 
@@ -574,7 +583,7 @@ type PromptSuggestionState = {
   suggestions: string[];
   exclude: string[];
 };
-const workspaceTabs = ["Issue", "PR", "CI", "团队", "记忆&知识库", "技能&MCP", "图谱"] as const;
+const workspaceTabs = ["Issue", "PR", "CI", "团队", "记忆&知识库", "技能&MCP", "A2A", "图谱"] as const;
 type WorkspaceTab = (typeof workspaceTabs)[number];
 
 const DRAFT_CONVERSATION_PREFIX = "draft:";
@@ -654,6 +663,85 @@ function makeToolResultTrace(data: ChatStreamToolResult, fallbackId: string): Ch
     skillActivationReason: data.skill_activation_reason,
     skillInstructionDigest: data.skill_instruction_digest
   };
+}
+
+/**
+ * 从历史消息的 agent_events 重建 A2A 协作卡数据，
+ * 让「刷新/切换会话」后仍然保持与运行中一致的卡片样式。
+ */
+function a2aFieldsFromHistory(item: ChatHistoryMessage, question: string): Partial<ChatMessage> | null {
+  if (!item.a2a_group) return null;
+  const events = item.agent_events ?? [];
+  const spec = events.find((event) => String(event.type || "") === "workflow_spec");
+  if (!spec) return null;
+
+  const rawTasks = Array.isArray(spec.tasks) ? spec.tasks.map((task) => contextRecord(task)) : [];
+  const plan: WorkflowPlan = {
+    workflow_id: contextString(spec.workflow_id),
+    goal: contextString(spec.goal) || question,
+    trigger_message: question,
+    tasks: rawTasks.map((task) => {
+      const claim = contextRecord(task.claim);
+      return {
+        id: contextString(task.id),
+        agent_name: contextString(task.agent_name),
+        task_type: contextString(task.task_type),
+        objective: contextString(task.objective),
+        dependencies: Array.isArray(task.dependencies) ? task.dependencies.map(String) : [],
+        claim: {
+          target_type: contextString(claim.target_type),
+          target_id: contextString(claim.target_id) || null,
+          allowed_sources: Array.isArray(claim.allowed_sources) ? claim.allowed_sources.map(String) : [],
+          write_intent: Boolean(claim.write_intent),
+          reason: contextString(claim.reason) || ""
+        }
+      };
+    })
+  };
+
+  const a2aEvents: A2aAgentEvent[] = [];
+  events.forEach((event, index) => {
+    const type = contextString(event.type);
+    if (type === "workflow_task_result") {
+      const taskId = contextString(event.task_id);
+      const task = rawTasks.find((candidate) => contextString(candidate.id) === taskId);
+      a2aEvents.push({
+        id: `history-task-${index}`,
+        kind: "task",
+        agentName: contextString(event.agent_name) || "agent",
+        taskType: contextString(event.task_type) || undefined,
+        objective: task ? contextString(task.objective) : undefined,
+        summary: contextString(event.summary),
+        status: contextString(event.status)
+      });
+      return;
+    }
+    if (type === "workflow_observer_result") {
+      const confidence = event.overall_confidence;
+      const findings = Array.isArray(event.findings) ? event.findings.length : 0;
+      a2aEvents.push({
+        id: `history-observer-${index}`,
+        kind: "observer",
+        agentName: "Observer",
+        objective: "复核各 Agent 产出质量与一致性",
+        summary: `Observer confidence=${typeof confidence === "number" ? confidence : "-"}, findings=${findings}`,
+        status: "success"
+      });
+      return;
+    }
+    if (type === "workflow_replan") {
+      a2aEvents.push({
+        id: `history-replan-${index}`,
+        kind: "replan",
+        agentName: "主控 Agent · Planner",
+        objective: "根据执行情况重新规划",
+        summary: contextString(event.reason),
+        status: "success"
+      });
+    }
+  });
+
+  return { workflowPlan: plan, a2aQuestion: question, a2aPhase: "done", a2aEvents };
 }
 
 function traceItemsFromAgentEvents(events: Array<Record<string, unknown>> = []): ChatTraceItem[] {
@@ -926,6 +1014,8 @@ export default function DashboardPage() {
   const [hiddenGraphNodeTypes, setHiddenGraphNodeTypes] = useState<Record<string, boolean>>({});
   const [hiddenGraphRelations, setHiddenGraphRelations] = useState<Record<string, boolean>>({});
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isProjectMobileOpen, setIsProjectMobileOpen] = useState(false);
+  const [isWorkspaceMobileOpen, setIsWorkspaceMobileOpen] = useState(false);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [projectSource, setProjectSource] = useState<AddProjectSource>("remote");
   const [projectUrl, setProjectUrl] = useState("");
@@ -938,6 +1028,7 @@ export default function DashboardPage() {
   const [connectingProject, setConnectingProject] = useState(false);
   const [loading, setLoading] = useState(false);
   const [planMode, setPlanMode] = useState(false);
+  const [a2aMode, setA2aMode] = useState(true);
   const [promptStateByRepo, setPromptStateByRepo] = useState<Record<string, PromptSuggestionState>>({});
   const [loadingPromptRepoId, setLoadingPromptRepoId] = useState<string | null>(null);
   const [promptLoadingDots, setPromptLoadingDots] = useState(".");
@@ -1563,17 +1654,21 @@ export default function DashboardPage() {
       return;
     }
     const feedbackByMessage = new Map(feedbackRows.map((item) => [item.assistant_message_id, item]));
-    setMessages(
-      history
-        .filter((item) => item.role === "user" || item.role === "assistant")
-        .map((item) => ({
+    let lastUserContent = "";
+    const mapped: ChatMessage[] = [];
+    history
+      .filter((item) => item.role === "user" || item.role === "assistant")
+      .forEach((item) => {
+        if (item.role === "user") lastUserContent = item.content;
+        const a2aFields = item.role === "assistant" ? a2aFieldsFromHistory(item, lastUserContent) : null;
+        mapped.push({
           id: item.id,
           messageId: item.id,
           role: item.role,
           content: item.content,
           route: item.route ?? undefined,
           toolCalls: item.tool_calls ?? [],
-          traceItems: traceItemsFromAgentEvents(item.agent_events ?? []),
+          traceItems: a2aFields ? [] : traceItemsFromAgentEvents(item.agent_events ?? []),
           traceCollapsed: true,
           compressionStats: item.compression_stats,
           progressiveCompaction: item.progressive_compaction,
@@ -1581,9 +1676,11 @@ export default function DashboardPage() {
           contextDiagnostics: item.context_diagnostics,
           contextCollapsed: true,
           responsePending: false,
-          feedback: feedbackByMessage.get(item.id)
-        }))
-    );
+          feedback: feedbackByMessage.get(item.id),
+          ...(a2aFields ?? {})
+        });
+      });
+    setMessages(mapped);
   }
 
   useEffect(() => {
@@ -1748,6 +1845,7 @@ export default function DashboardPage() {
   }
 
   async function selectProject(repo: Repository) {
+    setIsProjectMobileOpen(false);
     setSelectedRepoId(repo.id);
     setExpandedRepoIds((items) => ({ ...items, [repo.id]: !items[repo.id] }));
     const conversations = conversationMap[repo.id]?.length ? conversationMap[repo.id] : await loadRepoConversations(repo.id);
@@ -1755,6 +1853,7 @@ export default function DashboardPage() {
   }
 
   async function selectConversation(repo: Repository, conversation: ProjectConversation) {
+    setIsProjectMobileOpen(false);
     setSelectedRepoId(repo.id);
     setExpandedRepoIds((items) => ({ ...items, [repo.id]: true }));
     setSelectedConversationId(conversation.id);
@@ -1762,6 +1861,7 @@ export default function DashboardPage() {
   }
 
   async function addConversation(repo: Repository) {
+    setIsProjectMobileOpen(false);
     setExpandedRepoIds((items) => ({ ...items, [repo.id]: true }));
     setSelectedRepoId(repo.id);
     setSelectedConversationId(makeDraftConversationId(repo.id));
@@ -2096,6 +2196,138 @@ export default function DashboardPage() {
       setSelectedConversationId(activeConversation.id);
     }
     return activeConversation;
+  }
+
+  /** A2A 模式：主控 Agent 规划 → 真实调度各领域 Agent 执行 → 汇总，全程渲染在对话流里 */
+  function appendA2aEvent(cardId: string, event: A2aAgentEvent) {
+    setMessages((items) =>
+      items.map((item) => (item.id === cardId ? { ...item, a2aEvents: [...(item.a2aEvents ?? []), event] } : item))
+    );
+  }
+
+  async function askA2aGroup(text = message) {
+    const trimmedText = text.trim();
+    if (!selectedRepo || !trimmedText) return;
+    const activeConversation = await ensureActiveConversation(trimmedText);
+    if (!activeConversation) return;
+
+    const cardId = `a2a-${crypto.randomUUID()}`;
+    setMessages((items) => [
+      ...items,
+      { id: crypto.randomUUID(), role: "user", content: trimmedText },
+      {
+        id: cardId,
+        role: "assistant",
+        content: "",
+        a2aQuestion: trimmedText,
+        a2aPhase: "planning" as A2aPhase,
+        a2aEvents: [],
+        responsePending: true
+      }
+    ]);
+    setMessage("");
+
+    const chatHistory = recentChatHistory();
+    const abortController = new AbortController();
+    streamAbortRef.current = abortController;
+    setLoading(true);
+    try {
+      const data = await apiPost<ChatPlanResponse>("/api/chat/plan", {
+        repo_id: selectedRepo.id,
+        conversation_id: activeConversation.id,
+        message: trimmedText,
+        context: chatRequestContext(chatHistory)
+      });
+      setMessages((items) =>
+        items.map((item) => (item.id === cardId ? { ...item, workflowPlan: data.plan, a2aPhase: "executing" as A2aPhase } : item))
+      );
+
+      await apiPostStream("/api/chat/plan/execute/stream", {
+        repo_id: selectedRepo.id,
+        conversation_id: activeConversation.id,
+        message: trimmedText,
+        workflow_spec: data.plan,
+        context: { ...chatRequestContext(chatHistory), a2a_group: true }
+      }, (event, rawData) => {
+        if (event === "tool_result") {
+          const res = rawData as ChatStreamToolResult;
+          const toolUseId = res.tool_use_id ?? "";
+          const content = (res.content ?? {}) as { answer_preview?: string };
+          const summary = content.answer_preview ?? res.error ?? "";
+          if (toolUseId.endsWith("_observer")) {
+            appendA2aEvent(cardId, {
+              id: crypto.randomUUID(),
+              kind: "observer",
+              agentName: "Observer",
+              objective: "复核各 Agent 产出质量与一致性",
+              summary,
+              status: res.status
+            });
+            return;
+          }
+          if (toolUseId.includes("_replan_")) {
+            appendA2aEvent(cardId, {
+              id: crypto.randomUUID(),
+              kind: "replan",
+              agentName: "主控 Agent · Planner",
+              objective: "根据执行情况重新规划",
+              summary,
+              status: res.status
+            });
+            return;
+          }
+          const task = data.plan.tasks.find((item) => toolUseId.endsWith(`_${item.id}`));
+          if (task) {
+            appendA2aEvent(cardId, {
+              id: crypto.randomUUID(),
+              kind: "task",
+              agentName: task.agent_name,
+              taskType: task.task_type,
+              objective: task.objective,
+              summary,
+              status: res.status
+            });
+          }
+          return;
+        }
+        if (event === "delta") {
+          const delta = rawData as ChatStreamDelta;
+          if (!delta.content) return;
+          setMessages((items) =>
+            items.map((item) => (item.id === cardId ? { ...item, content: item.content + delta.content } : item))
+          );
+          return;
+        }
+        if (event === "final") {
+          const finalData = rawData as ChatStreamFinal;
+          setMessages((items) =>
+            items.map((item) =>
+              item.id === cardId
+                ? {
+                    ...item,
+                    content: finalData.answer,
+                    a2aPhase: finalData.route === "error" ? ("error" as A2aPhase) : ("done" as A2aPhase),
+                    a2aError: finalData.route === "error" ? finalData.answer : undefined,
+                    responsePending: false
+                  }
+                : item
+            )
+          );
+          void loadRepoConversations(selectedRepo.id);
+        }
+      }, { signal: abortController.signal });
+    } catch (error) {
+      const friendly = getFriendlyError(error);
+      setMessages((items) =>
+        items.map((item) =>
+          item.id === cardId
+            ? { ...item, content: `A2A 协作失败：${friendly}`, a2aPhase: "error" as A2aPhase, a2aError: friendly, responsePending: false }
+            : item
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function askAgent(text = message) {
@@ -2461,49 +2693,65 @@ export default function DashboardPage() {
 
   return (
     <div
-      className="relative grid h-[calc(100vh-24px)] min-h-0 overflow-hidden rounded-lg border border-line bg-surface/80 shadow-sm"
-      style={{ gridTemplateColumns: `${isSidebarCollapsed ? "56px" : "300px"} minmax(0,1fr)`, transition: "grid-template-columns 260ms ease" }}
+      className="dashboard-shell"
+      style={{ ["--project-width" as string]: `${isSidebarCollapsed ? "56px" : "272px"}` } as React.CSSProperties}
     >
-      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-line bg-surface-2 transition-all duration-300">
-        <div className={`border-b border-line ${isSidebarCollapsed ? "p-2" : "p-4"}`}>
-          <div className={`flex items-center ${isSidebarCollapsed ? "flex-col gap-3" : "gap-3"}`}>
-            <div className="magnetic flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-prism font-display text-sm font-semibold text-white shadow-glow">P</div>
+      {isProjectMobileOpen && (
+        <button
+          type="button"
+          className="mobile-panel-backdrop md:hidden"
+          onClick={() => setIsProjectMobileOpen(false)}
+          aria-label="关闭项目面板"
+        />
+      )}
+      <aside className={`project-sidebar flex flex-col overflow-hidden transition-colors ${isProjectMobileOpen ? "is-open" : ""}`}>
+        <div className={`project-heading border-b border-hair ${isSidebarCollapsed ? "p-2" : ""}`}>
+          <div className={`flex items-center ${isSidebarCollapsed ? "flex-col gap-3" : "gap-2.5"}`}>
             {!isSidebarCollapsed && (
               <div className="min-w-0 flex-1">
-                <div className="font-display text-base font-semibold tracking-tight2 text-ink">PR<span className="spectrum-text italic">ism</span></div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-mute">研发协作智能体</div>
+                <div className="mono-eyebrow !text-[9px] text-prism">01 / Projects</div>
+                <h2 className="mt-1 font-display text-xl font-semibold tracking-tight2 text-ink">项目与会话</h2>
               </div>
             )}
             <button
+              type="button"
               onClick={() => setIsSidebarCollapsed((value) => !value)}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-body transition hover:bg-teal-50"
-              title={isSidebarCollapsed ? "展开项目侧边栏" : "隐藏项目侧边栏"}
+              className="icon-button hidden border border-hair md:inline-flex"
+              title={isSidebarCollapsed ? "展开项目侧边栏" : "收起项目侧边栏"}
+              aria-label={isSidebarCollapsed ? "展开项目侧边栏" : "收起项目侧边栏"}
             >
               {isSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsProjectMobileOpen(false)}
+              className="icon-button md:hidden"
+              aria-label="关闭项目面板"
+            >
+              <X className="h-4 w-4" />
             </button>
           </div>
 
           {isSidebarCollapsed ? (
-            <div className="mt-4 flex flex-col items-center gap-3">
-              <button onClick={openAddProject} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-body transition hover:bg-surface" title="添加项目">
+            <div className="mt-3 flex flex-col items-center gap-2">
+              <button type="button" onClick={openAddProject} className="icon-button" title="添加项目" aria-label="添加项目">
                 <Plus className="h-4 w-4" />
               </button>
               <button
+                type="button"
                 onClick={refreshSelectedRepo}
                 disabled={!selectedRepo || syncing}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-body transition hover:bg-surface disabled:opacity-50"
+                className="icon-button disabled:opacity-45"
                 title="刷新当前项目"
+                aria-label="刷新当前项目"
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               </button>
             </div>
           ) : (
-            <div className="mt-5 flex items-center justify-between">
-              <div>
-                <div className="mono-eyebrow">Projects</div>
-                <h2 className="mt-1.5 font-display text-xl font-semibold tracking-tight2 text-ink">项目</h2>
-              </div>
-              <button onClick={openAddProject} className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white">
+            <div className="mt-4 flex items-center justify-between">
+              <span className="font-mono text-[9px] uppercase tracking-[0.13em] text-dim">{repos.length} connected</span>
+              <button type="button" onClick={openAddProject} className="inline-flex items-center gap-1 rounded-[4px] border border-ink bg-ink px-2.5 py-1.5 text-[11px] font-medium text-surface transition hover:border-prism hover:bg-prism">
                 <Plus className="h-3.5 w-3.5" />
                 添加项目
               </button>
@@ -2531,13 +2779,13 @@ export default function DashboardPage() {
               </button>
             ) : (
               <div key={repo.id} className="mb-1">
-                <div className={`group flex h-9 items-center gap-1 rounded-md px-1 transition-colors duration-300 ${isSelectedRepo ? "bg-surface shadow-card" : "hover:bg-surface/60"}`}>
+                <div className={`group flex min-h-9 items-center gap-1 rounded-md px-1 py-1 transition-colors duration-300 ${isSelectedRepo ? "bg-surface shadow-card" : "hover:bg-surface/60"}`}>
                   <button onClick={() => selectProject(repo).catch(() => undefined)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute transition hover:bg-surface">
                     <ChevronDown className={`h-3.5 w-3.5 transition ${isExpanded ? "" : "-rotate-90"}`} />
                   </button>
-                  <button onClick={() => selectProject(repo).catch(() => undefined)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <Folder className="h-4 w-4 shrink-0 text-mute" />
-                    <span className="break-words text-sm text-body">
+                  <button onClick={() => selectProject(repo).catch(() => undefined)} className="flex min-w-0 flex-1 items-start gap-2 py-0.5 text-left">
+                    <Folder className="mt-0.5 h-4 w-4 shrink-0 text-mute" />
+                    <span className="min-w-0 break-words text-sm leading-5 text-body">
                       {repo.name || repo.full_name}
                     </span>
                   </button>
@@ -2546,7 +2794,7 @@ export default function DashboardPage() {
                       event.stopPropagation();
                       addConversation(repo).catch(() => undefined);
                     }}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-surface hover:text-ink group-hover:opacity-100"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-surface hover:text-ink focus:opacity-100 group-hover:opacity-100"
                     title="添加会话"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -2556,30 +2804,30 @@ export default function DashboardPage() {
                       event.stopPropagation();
                       removeRepo(repo).catch(() => undefined);
                     }}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-rose-50 hover:text-blush group-hover:opacity-100"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-rose-50 hover:text-blush focus:opacity-100 group-hover:opacity-100"
                     title="移除项目"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 {isExpanded && (
-                  <div className="ml-7 mt-1 space-y-0.5">
-                    {conversations.length === 0 && <div className="px-2 py-1.5 text-xs text-mute">暂无会话</div>}
+                  <div className="ml-[18px] mt-0.5 space-y-0.5 border-l border-hair pl-2.5">
+                    {conversations.length === 0 && <div className="px-2 py-1 text-xs text-mute">暂无会话</div>}
                     {conversations.map((conversation) => (
-                      <div key={conversation.id} className="group/conversation flex items-center gap-1">
+                      <div key={conversation.id} className="group/conversation flex items-start gap-1">
                         <button
                           onClick={() => selectConversation(repo, conversation).catch(() => undefined)}
-                          className={`flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 text-left text-sm transition ${
+                          className={`flex min-h-8 min-w-0 flex-1 items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm leading-5 transition ${
                             selectedConversationId === conversation.id ? "bg-surface text-ink shadow-sm" : "text-body hover:bg-surface"
                           }`}
                           title={conversation.title}
                         >
                           <span className="min-w-0 break-words">{conversation.title}</span>
-                          <span className="shrink-0 text-xs text-mute">{formatRelativeTime(conversation.updated_at)}</span>
+                          <span className="shrink-0 pt-px font-mono text-[10px] text-mute">{formatRelativeTime(conversation.updated_at)}</span>
                         </button>
                         <button
                           onClick={() => removeConversation(repo, conversation).catch(() => undefined)}
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-rose-50 hover:text-blush group-hover/conversation:opacity-100"
+                          className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-mute opacity-0 transition hover:bg-rose-50 hover:text-blush focus:opacity-100 group-hover/conversation:opacity-100"
                           title="删除会话"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -2616,30 +2864,52 @@ export default function DashboardPage() {
       </aside>
 
       <section
-        className="grid min-h-0 min-w-0 bg-panel"
-        style={{ gridTemplateColumns: `minmax(460px,1fr) 8px ${workspaceWidth}px`, gridTemplateRows: "auto minmax(0,1fr)" }}
+        className="workspace-layout"
+        style={{ ["--workspace-width" as string]: `${workspaceWidth}px` } as React.CSSProperties}
       >
-        <section className="col-start-1 row-start-1 shrink-0 border-b border-line bg-surface/90 px-4 py-2">
+        <section className="col-start-1 row-start-1 shrink-0 border-b border-hair bg-surface px-4 py-3 sm:px-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h2 className="font-display text-xl font-semibold tracking-tight2 text-ink">总览</h2>
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-dim">当前代码仓</span>
-                <span className="break-all text-sm font-medium text-body">{selectedRepo?.full_name || "未选择仓库"}</span>
-                {selectedConversation && <span className="whitespace-nowrap rounded-full border border-hair bg-panel px-2.5 py-0.5 text-xs text-body">会话：{selectedConversation.title}</span>}
+            <div className="flex min-w-0 items-start gap-2">
+              <button
+                type="button"
+                className="icon-button mobile-project-toggle mr-1"
+                onClick={() => {
+                  setIsSidebarCollapsed(false);
+                  setIsProjectMobileOpen(true);
+                }}
+                aria-label="打开项目面板"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 className="font-display text-xl font-semibold tracking-tight2 text-ink">总览</h2>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-dim">Repository</span>
+                  <span className="break-all text-sm font-medium text-body">{selectedRepo?.full_name || "未选择仓库"}</span>
+                  {selectedConversation && <span className="text-xs text-mute">会话：{selectedConversation.title}</span>}
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-[0.11em] text-mute">
+                  <span className="status-dot !h-1.5 !w-1.5" />
+                  Production workspace · Live context
+                  <A2aStatusPill active={workspaceTab === "A2A"} onClick={() => setWorkspaceTab("A2A")} />
+                </div>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-prism/20 bg-prism/[0.06] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-prism">
-                <span className="glow-dot !h-1.5 !w-1.5" />
-                Production Workspace
-              </div>
-              <button onClick={openAddProject} className="text-xs text-accent hover:underline">
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" onClick={openAddProject} className="hidden text-xs text-prism hover:underline sm:block">
                 管理项目
+              </button>
+              <button
+                type="button"
+                className="icon-button mobile-workspace-toggle"
+                onClick={() => setIsWorkspaceMobileOpen(true)}
+                aria-label="打开工作区面板"
+              >
+                <PanelRightOpen className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-3">
+          <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2 border-t border-hair pt-3 sm:grid-cols-3 xl:grid-cols-6">
             <MetricCard icon={ListTodo} label="待处理 Issue" value={openIssues.length} />
             <MetricCard icon={GitPullRequest} label="待 Review PR" value={openPrs.length} />
             <MetricCard icon={CheckCircle2} label="已处理 Issue" value={handledIssues.length} />
@@ -2649,32 +2919,70 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <div className="col-start-2 row-span-2 row-start-1 cursor-col-resize border-x border-line bg-surface-2 transition hover:bg-teal-100" onMouseDown={startResize} title="拖拽调整 Workspace 宽度" />
+        {isWorkspaceMobileOpen && (
+          <button
+            type="button"
+            className="mobile-panel-backdrop xl:hidden"
+            onClick={() => setIsWorkspaceMobileOpen(false)}
+            aria-label="关闭工作区面板"
+          />
+        )}
 
-        <aside className="col-start-3 row-span-2 row-start-1 flex min-h-0 min-w-0 flex-col bg-panel">
-          <div className="border-b border-line bg-surface/80 px-4 py-3">
+        <div
+          className="workspace-resizer"
+          role="separator"
+          aria-label="调整工作区宽度"
+          aria-orientation="vertical"
+          aria-valuemin={340}
+          aria-valuemax={560}
+          aria-valuenow={workspaceWidth}
+          tabIndex={0}
+          onMouseDown={startResize}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const delta = event.key === "ArrowLeft" ? -16 : 16;
+            setWorkspaceWidth((width) => Math.max(340, Math.min(560, width + delta)));
+          }}
+        />
+
+        <aside className={`workspace-panel flex flex-col ${isWorkspaceMobileOpen ? "is-open" : ""}`}>
+          <div className="border-b border-hair bg-surface px-4 py-3">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Workspace</h2>
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="text-[11px] text-mute">
-                  Issues: {filteredIssues.length} · PRs: {filteredPrs.length}
+              <div>
+                <div className="mono-eyebrow !text-[9px] text-prism">Context / 03</div>
+                <h2 className="mt-1 font-display text-lg font-semibold tracking-tight2 text-ink">Workspace</h2>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <div className="mr-1 font-mono text-[9px] text-mute">
+                  I {filteredIssues.length} · P {filteredPrs.length}
                 </div>
                 <button
+                  type="button"
                   onClick={refreshSelectedRepo}
                   disabled={!selectedRepo || syncing}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-xs font-medium text-body transition hover:bg-teal-50 disabled:opacity-60"
+                  className="icon-button disabled:opacity-45"
                   title="刷新 Issue/PR/CI"
                   aria-label="刷新 Issue/PR/CI"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-                  {syncing ? "刷新中" : "刷新"}
+                </button>
+                <button
+                  type="button"
+                  className="icon-button workspace-mobile-close"
+                  onClick={() => setIsWorkspaceMobileOpen(false)}
+                  aria-label="关闭工作区面板"
+                >
+                  <PanelRightClose className="h-4 w-4" />
                 </button>
               </div>
             </div>
-            <div className="mt-3 flex gap-1 overflow-x-auto scrollbar-none">
+            <div role="tablist" aria-label="工作区分类" className="mt-2 flex flex-wrap gap-1">
               {workspaceTabs.map((tab) => (
                 <button
                   key={tab}
+                  role="tab"
+                  aria-selected={workspaceTab === tab}
                   onClick={() => {
                     if (tab === "图谱" && selectedRepo && selectedWorkspaceItem) {
                       const center = workspaceSelectionToGraphCenter(selectedWorkspaceItem);
@@ -2682,9 +2990,7 @@ export default function DashboardPage() {
                     }
                     setWorkspaceTab(tab);
                   }}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-500 ease-silk ${
-                    workspaceTab === tab ? "bg-prism text-white shadow-card" : "bg-surface/70 text-mute hover:bg-surface hover:text-ink"
-                  }`}
+                  className={`workspace-tab shrink-0 px-2 text-xs transition-colors ${workspaceTab === tab ? "is-active" : "hover:text-ink"}`}
                 >
                   {tab}
                 </button>
@@ -2736,7 +3042,7 @@ export default function DashboardPage() {
           )}
 
           {!hasWorkspaceDetail && workspaceTab === "Issue" && (
-            <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
+            <div className="mt-4 grid min-h-0 flex-1 auto-rows-[minmax(60px,1fr)] gap-2">
               {issueCategoryMeta.map((category) => {
                 const items = filteredIssues.filter((item) => classifyIssue(item) === category.key);
                 const groupKey = `issue-${category.key}`;
@@ -2764,7 +3070,7 @@ export default function DashboardPage() {
           )}
 
           {!hasWorkspaceDetail && workspaceTab === "PR" && (
-            <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2">
+            <div className="mt-4 grid min-h-0 flex-1 auto-rows-[minmax(60px,1fr)] gap-2">
               {prCategoryMeta.map((category) => {
                 const items = filteredPrs.filter((item) => classifyPr(item) === category.key);
                 const groupKey = `pr-${category.key}`;
@@ -2848,6 +3154,8 @@ export default function DashboardPage() {
             />
           )}
 
+          {!hasWorkspaceDetail && workspaceTab === "A2A" && <A2aWorkspace />}
+
           {!hasWorkspaceDetail && workspaceTab === "图谱" && (
             <KnowledgeGraphWorkspace
               graph={selectedKnowledgeGraph ?? null}
@@ -2870,22 +3178,46 @@ export default function DashboardPage() {
           </div>
         </aside>
 
-          <section className="flex min-h-0 min-w-0 flex-col bg-canvas">
-            <div ref={chatScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-5">
-              <div className="my-auto flex w-full flex-col gap-4">
+          <section className="chat-column flex min-h-0 min-w-0 flex-col">
+            <div ref={chatScrollRef} className="chat-stream flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-7">
+              <div className={`${isEmptyConversation ? "my-auto" : ""} mx-auto flex w-full max-w-[880px] flex-col gap-5`}>
                 {messages.map((item) => {
                   const isWelcome = item.id.startsWith("welcome-");
+                  if (item.a2aQuestion) {
+                    return (
+                      <A2aDiscussionCard
+                        key={item.id}
+                        question={item.a2aQuestion}
+                        plan={item.workflowPlan}
+                        events={item.a2aEvents ?? []}
+                        synthesis={item.content}
+                        phase={item.a2aPhase ?? "planning"}
+                        error={item.a2aError}
+                      />
+                    );
+                  }
                   const traceItems = item.traceItems ?? [];
                   const failedTools = (item.toolCalls ?? []).filter((call) => call.status === "error");
                   const failedToolTitle = failedTools.map((call) => `${call.tool_name}: ${call.error ?? "failed"}`).join("\n");
+                  if (isWelcome) {
+                    return (
+                      <div key={item.id} className="chat-welcome animate-fade-up">
+                        <div className="mono-eyebrow text-prism">Engineering copilot / 01</div>
+                        <h1>把复杂研发，<br /><em>讲清楚。</em></h1>
+                        <p className="mt-5 max-w-[560px] whitespace-pre-wrap text-sm leading-[1.9] text-mute">{item.content}</p>
+                        <div className="chat-welcome-stats">
+                          <span><strong>{issues.length}</strong> Issues</span>
+                          <span><strong>{prs.length}</strong> Pull Requests</span>
+                          <span><strong>{runs.length}</strong> CI Runs</span>
+                          <span className="max-w-[260px] truncate"><strong>{selectedRepo?.default_branch || "main"}</strong> default branch</span>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={item.id} className={`flex animate-fade-up ${item.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div
-                        className={`${isWelcome ? "w-full max-w-none rounded-xl" : "max-w-[80%] rounded-2xl"} px-4 py-3 text-sm leading-7 ${
-                          item.role === "user"
-                            ? "rounded-br-md bg-prism text-white shadow-lift"
-                            : "rounded-bl-md border border-hair bg-surface text-body shadow-card"
-                        }`}
+                        className={`${item.role === "user" ? "max-w-[82%] rounded-lg bg-ink text-surface" : "max-w-[94%] rounded-lg border border-hair bg-surface text-body"} px-4 py-3.5 text-sm leading-[1.85]`}
                       >
                         {item.role === "assistant" ? (
                           <>
@@ -2975,14 +3307,14 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="border-t border-line bg-surface/90 p-4">
-              <div className="w-full">
+            <div className="border-t border-hair bg-surface p-3 sm:p-4">
+              <div className="chat-composer-inner">
                 {(promptSuggestions.length > 0 || loadingPrompts) && (
                   <div className="mb-3 flex items-center gap-2">
                     <div ref={promptRowRef} className="relative min-w-0 flex-1 overflow-hidden">
                       <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
                       {loadingPrompts && promptSuggestions.length === 0 && (
-                        <span className="shrink-0 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-mute">
+                        <span className="shrink-0 rounded-[4px] border border-hair bg-panel px-3 py-1.5 text-xs text-mute">
                           推荐生成中{promptLoadingDots}
                         </span>
                       )}
@@ -2991,7 +3323,7 @@ export default function DashboardPage() {
                           key={prompt}
                           onClick={() => askAgent(prompt)}
                           disabled={!selectedRepo || loading || loadingPrompts}
-                          className="max-w-full shrink-0 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-body transition hover:border-teal-200 hover:bg-teal-50 disabled:opacity-60"
+                          className="prompt-chip max-w-full shrink-0 rounded-[4px] border border-hair bg-panel px-3 py-1.5 text-xs text-body transition hover:border-ink/25 hover:text-ink disabled:opacity-55"
                           title={prompt}
                         >
                           {prompt}
@@ -3008,7 +3340,7 @@ export default function DashboardPage() {
                             key={prompt}
                             type="button"
                             data-prompt-chip-measure
-                            className="shrink-0 rounded-full border border-line bg-panel px-3 py-1.5 text-xs text-body"
+                            className="prompt-chip shrink-0 rounded-[4px] border border-hair bg-panel px-3 py-1.5 text-xs text-body"
                             tabIndex={-1}
                           >
                             {prompt}
@@ -3018,9 +3350,10 @@ export default function DashboardPage() {
                     </div>
                     {promptSuggestions.length > 0 && (
                       <button
+                        type="button"
                         onClick={refreshPromptSuggestions}
                         disabled={!selectedRepo || loading || loadingPrompts}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-mute transition hover:border-teal-200 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="icon-button disabled:opacity-45"
                         title="刷新推荐提示语"
                         aria-label="刷新推荐提示语"
                       >
@@ -3029,10 +3362,11 @@ export default function DashboardPage() {
                     )}
                   </div>
                 )}
-                <div className="flex items-stretch gap-3">
+                <div className="flex items-stretch gap-2">
                   <textarea
-                    className={`max-h-40 min-h-[5.5rem] flex-1 resize-none rounded-xl border bg-panel/60 px-4 py-3 text-sm leading-6 outline-none transition-all duration-500 ease-silk placeholder:text-dim focus:border-prism/50 focus:bg-surface focus:shadow-glow ${
-                      planMode ? "border-prism/40" : "border-hair"
+                    aria-label="向当前代码仓提问"
+                    className={`chat-textarea max-h-44 flex-1 resize-none border bg-panel px-4 py-3 text-sm leading-6 outline-none transition-colors placeholder:text-dim focus:border-prism/55 focus:bg-surface ${
+                      planMode ? "border-prism/55" : "border-hair"
                     }`}
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
@@ -3041,33 +3375,57 @@ export default function DashboardPage() {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
                         if (!loading) {
-                          planMode ? createWorkflowPlan() : askAgent();
+                          a2aMode ? askA2aGroup() : planMode ? createWorkflowPlan() : askAgent();
                         }
                       }
                     }}
                   />
-                  <div className="flex w-12 shrink-0 flex-col gap-2">
+                  <div className="flex w-11 shrink-0 flex-col gap-2">
                     <button
                       type="button"
-                      onClick={() => setPlanMode((value) => !value)}
+                      onClick={() => {
+                        setA2aMode((value) => !value);
+                        if (!a2aMode) setPlanMode(false);
+                      }}
+                      disabled={loading}
+                      aria-pressed={a2aMode}
+                      aria-label={a2aMode ? "关闭 A2A 小组模式" : "开启 A2A 小组模式"}
+                      title={a2aMode ? "A2A 小组模式：提问后自动召集多 Agent 讨论（点击关闭）" : "开启 A2A 小组模式：提问后自动召集多 Agent 讨论"}
+                      className={`inline-flex h-9 w-11 items-center justify-center rounded-[5px] border transition disabled:opacity-55 ${
+                        a2aMode
+                          ? "border-prism bg-prism text-white"
+                          : "border-hair bg-surface text-mute hover:border-ink/25 hover:text-ink"
+                      }`}
+                    >
+                      <Users className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPlanMode((value) => !value);
+                        if (!planMode) setA2aMode(false);
+                      }}
                       disabled={loading}
                       aria-pressed={planMode}
-                      className={`inline-flex h-8 w-12 items-center justify-center rounded-md border transition disabled:opacity-60 ${
-                        planMode
-                          ? "border-teal-600 bg-teal-600 text-white shadow-sm"
-                          : "border-line bg-surface text-mute hover:border-teal-200 hover:bg-teal-50"
-                      }`}
+                      aria-label={planMode ? "切换到对话模式" : "切换到计划模式"}
                       title={planMode ? "切换到对话模式" : "切换到计划模式"}
+                      className={`inline-flex h-9 w-11 items-center justify-center rounded-[5px] border transition disabled:opacity-55 ${
+                        planMode
+                          ? "border-prism bg-prism text-white"
+                          : "border-hair bg-surface text-mute hover:border-ink/25 hover:text-ink"
+                      }`}
                     >
                       <ListTodo className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => (loading ? stopAgentResponse() : planMode ? createWorkflowPlan() : askAgent())}
-                      disabled={!selectedRepo || (!loading && !message.trim())}
-                      className="group magnetic sheen relative inline-flex min-h-12 flex-1 items-center justify-center overflow-hidden rounded-xl bg-prism text-white shadow-lift transition-all duration-500 ease-silk hover:bg-accent disabled:opacity-50"
+                      type="button"
+                      onClick={() => (loading ? stopAgentResponse() : a2aMode ? askA2aGroup() : planMode ? createWorkflowPlan() : askAgent())}
+                      disabled={(!loading && !message.trim()) || (!a2aMode && !selectedRepo)}
+                      className="magnetic inline-flex min-h-11 flex-1 items-center justify-center rounded-[5px] border border-ink bg-ink text-surface transition hover:border-prism hover:bg-prism disabled:opacity-45"
+                      aria-label={loading ? "停止响应" : "发送"}
                       title={loading ? "停止响应" : "发送"}
                     >
-                      {loading ? <Square className="h-4 w-4 fill-current" /> : <Send className="h-5 w-5" />}
+                      {loading ? <Square className="h-4 w-4 fill-current" /> : <Send className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -4400,11 +4758,11 @@ function AddProjectOverlay({
 
 function MetricCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: number }) {
   return (
-    <div className="group flex min-w-0 items-center gap-3 border-l border-hair pl-4">
-      <Icon className="h-4 w-4 shrink-0 text-prism/70 transition-colors duration-500 group-hover:text-prism" />
+    <div className="metric-inline">
+      <Icon className="h-4 w-4 shrink-0 text-prism/70" />
       <div className="min-w-0">
-        <div className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.08em] text-mute">{label}</div>
-        <div className="mt-1 font-display text-xl font-semibold leading-none tabular-nums tracking-tight2 text-ink">{value}</div>
+        <div className="metric-inline-value">{value}</div>
+        <div className="metric-inline-label mt-1">{label}</div>
       </div>
     </div>
   );
@@ -4508,7 +4866,7 @@ function CategoryGroup({
   onToggle: () => void;
 }) {
   return (
-    <section className="flex min-h-[64px] flex-1 flex-col justify-center border-b border-hair/70 pb-3 [&:last-child]:border-b-0">
+    <section className="flex min-h-[60px] flex-col justify-center rounded-lg border border-transparent px-2 py-2 transition-colors duration-500 hover:border-hair hover:bg-surface/40">
       <button type="button" onClick={onToggle} className="flex h-8 w-full shrink-0 items-center justify-between">
         <div className={`flex items-center gap-2 text-sm font-semibold ${color}`}>
           <span>{label}</span>
@@ -5448,115 +5806,117 @@ function KnowledgeGraphWorkspace({
       )
     : [];
   const showEdgeLabels = filtered.edges.length <= 8;
+  const selectedNodeKeyResolved = selectedNode ? knowledgeGraphNodeKey(selectedNode) : "";
+  const hiddenLabels = useMemo(
+    () => computeGraphLabelHiding(filtered.nodes, filtered.edges, positions, selectedNodeKeyResolved),
+    [filtered.nodes, filtered.edges, positions, selectedNodeKeyResolved]
+  );
   const visibleNodeCount = graphStatNumber(graph, "visible_nodes", allNodes.length);
   const visibleEdgeCount = graphStatNumber(graph, "visible_edges", allEdges.length);
   const totalEdgeCount = graphStatNumber(graph, "total_edges", allEdges.length);
 
   return (
     <div className="space-y-3">
-      <section className="rounded-md border border-line bg-surface p-4">
-        <div className="flex items-start justify-between gap-3">
+      <section className="border border-hair bg-surface">
+        <div className="flex items-start justify-between gap-3 border-b border-hair p-4">
           <div>
-            <div className="flex items-center gap-2">
-              <Network className="h-4 w-4 text-accent" />
-              <h3 className="text-sm font-semibold text-ink">项目知识图谱</h3>
-            </div>
-            <p className="mt-1 text-xs leading-5 text-mute">把 Issue、PR、CI、成员、文档、记忆和代码文件按可追溯关系串起来。</p>
+            <div className="page-kicker">Knowledge graph</div>
+            <h3 className="mt-1.5 font-display text-xl font-semibold text-ink">项目知识图谱</h3>
+            <p className="mt-1.5 text-xs leading-5 text-mute">把 Issue、PR、CI、成员、文档、记忆和代码文件按可追溯关系串起来。</p>
           </div>
           <div className="flex shrink-0 gap-1">
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={loading}
-              title="刷新图谱"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-mute transition hover:bg-panel disabled:opacity-50"
-            >
+            <button type="button" onClick={onRefresh} disabled={loading} title="刷新图谱" aria-label="刷新图谱" className="icon-button disabled:opacity-45">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
-            <button
-              type="button"
-              onClick={onRebuild}
-              disabled={loading}
-              title="重建关系边"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line text-mute transition hover:bg-panel disabled:opacity-50"
-            >
+            <button type="button" onClick={onRebuild} disabled={loading} title="重建关系边" aria-label="重建关系边" className="icon-button disabled:opacity-45">
               <Database className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-body">
-          <div className="rounded-md bg-panel px-3 py-2">节点 {visibleNodeCount}</div>
-          <div className="rounded-md bg-panel px-3 py-2">关系 {visibleEdgeCount}</div>
-          <div className="rounded-md bg-panel px-3 py-2">总边 {totalEdgeCount}</div>
+        <div className="grid grid-cols-3 border-b border-hair">
+          {[
+            ["节点", visibleNodeCount],
+            ["可见关系", visibleEdgeCount],
+            ["全部关系", totalEdgeCount]
+          ].map(([label, value]) => (
+            <div key={label} className="px-3 py-2.5 [&+&]:border-l [&+&]:border-hair">
+              <div className="font-mono text-[8px] uppercase tracking-[0.12em] text-mute">{label}</div>
+              <div className="mt-1 font-display text-lg font-semibold tabular-nums text-ink">{value}</div>
+            </div>
+          ))}
         </div>
 
-        <div className="mt-3 flex items-center gap-2 rounded-md border border-line bg-surface px-3">
+        <label className="flex min-h-11 items-center gap-2 border-b border-hair bg-surface px-3">
           <Search className="h-4 w-4 shrink-0 text-mute" />
+          <span className="sr-only">搜索节点或关系</span>
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="搜索节点或关系..."
-            className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none"
+            className="h-10 min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-dim"
           />
           {query && (
-            <button type="button" onClick={() => onQueryChange("")} className="text-mute hover:text-body" title="清空搜索">
+            <button type="button" onClick={() => onQueryChange("")} className="icon-button" title="清空搜索" aria-label="清空搜索">
               <X className="h-3.5 w-3.5" />
             </button>
           )}
+        </label>
+
+        <div className="p-3">
+          {Boolean(nodeTypes.length) && (
+            <div className="flex flex-wrap gap-1.5">
+              {nodeTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-pressed={!hiddenNodeTypes[type]}
+                  onClick={() => onToggleNodeType(type)}
+                  className={`border px-2 py-1 text-[10px] font-medium transition ${
+                    hiddenNodeTypes[type] ? "border-hair text-dim" : "border-prism/35 bg-teal-50 text-prism"
+                  }`}
+                >
+                  {graphNodeTypeLabel(type)}
+                </button>
+              ))}
+            </div>
+          )}
+          {Boolean(relations.length) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {relations.map((relation) => (
+                <button
+                  key={relation}
+                  type="button"
+                  aria-pressed={!hiddenRelations[relation]}
+                  onClick={() => onToggleRelation(relation)}
+                  className={`border px-2 py-1 text-[10px] transition ${
+                    hiddenRelations[relation] ? "border-hair text-dim" : "border-hair bg-panel text-mute"
+                  }`}
+                >
+                  {graphRelationLabel(relation)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-
-        {Boolean(nodeTypes.length) && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {nodeTypes.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => onToggleNodeType(type)}
-                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                  hiddenNodeTypes[type] ? "border-line bg-surface text-mute" : "border-transparent bg-panel text-body"
-                }`}
-              >
-                {graphNodeTypeLabel(type)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {Boolean(relations.length) && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {relations.map((relation) => (
-              <button
-                key={relation}
-                type="button"
-                onClick={() => onToggleRelation(relation)}
-                className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                  hiddenRelations[relation] ? "border-line bg-surface text-mute" : "border-transparent bg-panel text-body"
-                }`}
-              >
-                {graphRelationLabel(relation)}
-              </button>
-            ))}
-          </div>
-        )}
       </section>
 
-      {error && <div className="rounded-md border border-red-100 bg-red-50 p-3 text-sm text-blush">{error}</div>}
+      {error && <div className="border border-blush/30 bg-blush/10 p-3 text-sm text-blush">{error}</div>}
 
       {!error && !loading && (!graph || graph.nodes.length === 0) && (
-        <div className="rounded-md border border-line bg-surface p-4 text-sm text-mute">还没有可展示的项目关系。同步 Issue/PR/CI，或添加项目记忆后再重建图谱。</div>
+        <div className="page-empty">还没有可展示的项目关系。同步 Issue/PR/CI，或添加项目记忆后再重建图谱。</div>
       )}
 
-      {loading && !graph && <div className="rounded-md border border-line bg-surface p-4 text-sm text-mute">正在加载项目知识图谱...</div>}
+      {loading && !graph && <div className="page-empty">正在加载项目知识图谱...</div>}
 
       {graph && filtered.nodes.length === 0 && (
-        <div className="rounded-md border border-line bg-surface p-4 text-sm text-mute">当前搜索或过滤条件下没有匹配节点。</div>
+        <div className="page-empty">当前搜索或过滤条件下没有匹配节点。</div>
       )}
 
       {graph && filtered.nodes.length > 0 && (
-        <section className="rounded-md border border-line bg-surface p-3">
-          <div className="overflow-x-auto scrollbar-none rounded-md bg-panel">
-            <svg viewBox="0 0 720 420" className="h-[360px] min-w-[680px] w-full" role="img" aria-label="项目知识图谱">
+        <section className="border border-hair bg-surface">
+          <div className="graph-canvas">
+            <svg viewBox="0 0 440 430" preserveAspectRatio="xMidYMid meet" role="img" aria-label="项目知识图谱">
               {filtered.edges.map((edge) => {
                 const from = positions.get(`${edge.from_type}:${edge.from_id}`);
                 const to = positions.get(`${edge.to_type}:${edge.to_id}`);
@@ -5564,9 +5924,23 @@ function KnowledgeGraphWorkspace({
                 const color = graphRelationColor(edge.relation);
                 return (
                   <g key={edge.id}>
-                    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={color} strokeWidth={edge.relation === "used_as_evidence" ? 2.8 : 1.6} strokeOpacity="0.58" />
+                    <line
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      style={{ stroke: color }}
+                      strokeWidth={edge.relation === "used_as_evidence" ? 2.2 : 1.15}
+                      strokeOpacity=".52"
+                    />
                     {showEdgeLabels && (
-                      <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 5} textAnchor="middle" fontSize="10" fill={color} fontWeight="700">
+                      <text
+                        x={(from.x + to.x) / 2}
+                        y={(from.y + to.y) / 2 - 6}
+                        textAnchor="middle"
+                        fontSize="9"
+                        style={{ fill: color }}
+                      >
                         {graphRelationLabel(edge.relation)}
                       </text>
                     )}
@@ -5578,22 +5952,64 @@ function KnowledgeGraphWorkspace({
                 if (!pos) return null;
                 const selected = selectedNode ? knowledgeGraphNodeKey(selectedNode) === knowledgeGraphNodeKey(node) : false;
                 const style = graphNodeStyle(node.type);
+                const labelAnchor = pos.x < 70 ? "start" : pos.x > 370 ? "end" : "middle";
+                const labelX = pos.x < 70 ? pos.x - 12 : pos.x > 370 ? pos.x + 12 : pos.x;
+                const labelLines = wrapGraphLabel(node.title, 7);
+                const labelBelow = pos.y >= 205;
+                const firstLineY = labelBelow ? pos.y + 22 : pos.y - (labelLines.length === 2 ? 42 : 30);
+                const typeLabelY = labelBelow
+                  ? pos.y + (labelLines.length === 2 ? 46 : 34)
+                  : pos.y - 18;
                 return (
-                  <g key={knowledgeGraphNodeKey(node)} role="button" tabIndex={0} onClick={() => onSelectNode(knowledgeGraphNodeKey(node))} className="cursor-pointer">
+                  <g
+                    key={knowledgeGraphNodeKey(node)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${graphNodeTypeLabel(node.type)}：${node.title}`}
+                    onClick={() => onSelectNode(knowledgeGraphNodeKey(node))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectNode(knowledgeGraphNodeKey(node));
+                      }
+                    }}
+                    className={`graph-node cursor-pointer focus:outline-none${hiddenLabels.has(knowledgeGraphNodeKey(node)) ? " label-collision" : ""}`}
+                  >
                     <circle
                       cx={pos.x}
                       cy={pos.y}
-                      r={selected ? 19 : 15}
-                      fill={node.highlighted ? "#fff7ed" : style.fill}
-                      stroke={node.highlighted ? "#f97316" : selected ? "#111827" : style.stroke}
-                      strokeWidth={node.highlighted || selected ? 2.6 : 1.6}
+                      r={selected ? 14 : 10}
+                      style={{
+                        fill: node.highlighted ? "rgb(var(--teal-50))" : style.fill,
+                        stroke: node.highlighted ? "rgb(var(--prism))" : selected ? "rgb(var(--ink))" : style.stroke
+                      }}
+                      strokeWidth={node.highlighted || selected ? 1.8 : 1.2}
                     />
-                    <text x={pos.x} y={pos.y + 34} textAnchor="middle" fontSize="11" fontWeight={selected ? "700" : "600"} fill="#334155">
-                      {clipGraphLabel(node.title, 18)}
-                    </text>
-                    <text x={pos.x} y={pos.y + 48} textAnchor="middle" fontSize="9" fill="#64748b">
-                      {graphNodeTypeLabel(node.type)}
-                    </text>
+                    {selected && <circle cx={pos.x} cy={pos.y} r="19" fill="none" style={{ stroke: "rgb(var(--prism) / .32)" }} strokeWidth="1" />}
+                    <g className="graph-node-labels">
+                      {labelLines.map((line, lineIndex) => (
+                        <text
+                          key={lineIndex}
+                          x={labelX}
+                          y={firstLineY + lineIndex * 12}
+                          textAnchor={labelAnchor}
+                          fontSize="11.5"
+                          fontWeight={selected ? "700" : "500"}
+                          style={{ fill: selected ? "rgb(var(--ink))" : "rgb(var(--body))" }}
+                        >
+                          {line}
+                        </text>
+                      ))}
+                      <text
+                        x={labelX}
+                        y={typeLabelY}
+                        textAnchor={labelAnchor}
+                        fontSize="9"
+                        style={{ fill: "rgb(var(--mute))" }}
+                      >
+                        {graphNodeTypeLabel(node.type)}
+                      </text>
+                    </g>
                   </g>
                 );
               })}
@@ -5601,38 +6017,26 @@ function KnowledgeGraphWorkspace({
           </div>
 
           {selectedNode && (
-            <div className="mt-3 rounded-md border border-line bg-surface p-3">
+            <div className="border-t border-hair bg-panel p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-medium text-accent">{graphNodeTypeLabel(selectedNode.type)}</div>
-                  <div className="mt-1 break-words text-sm font-semibold text-ink">{selectedNode.title}</div>
+                  <div className="page-kicker">{graphNodeTypeLabel(selectedNode.type)}</div>
+                  <div className="mt-1.5 break-words font-display text-xl font-semibold text-ink">{selectedNode.title}</div>
                   {selectedNode.subtitle && <div className="mt-1 text-xs text-mute">{selectedNode.subtitle}</div>}
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onFocusNode(selectedNode)}
-                    className="rounded-md border border-line px-2 py-1 text-xs text-body transition hover:bg-panel"
-                  >
-                    聚焦
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenNode(selectedNode)}
-                    className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-white transition hover:bg-teal-700"
-                  >
-                    打开
-                  </button>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => onFocusNode(selectedNode)} className="border border-hair bg-surface px-3 py-1.5 text-xs text-body transition hover:border-ink/30">聚焦</button>
+                  <button type="button" onClick={() => onOpenNode(selectedNode)} className="border border-ink bg-ink px-3 py-1.5 text-xs font-medium text-surface transition hover:border-prism hover:bg-prism">打开</button>
                 </div>
               </div>
 
-              <div className="mt-3 space-y-1.5">
+              <div className="mt-4 space-y-1.5">
                 {selectedEdges.length === 0 && <div className="text-xs text-mute">这个节点暂时没有可见关系。</div>}
                 {selectedEdges.slice(0, 8).map((edge) => {
                   const isOutgoing = edge.from_type === selectedNode.type && edge.from_id === selectedNode.id;
                   const other = nodeByKey.get(isOutgoing ? `${edge.to_type}:${edge.to_id}` : `${edge.from_type}:${edge.from_id}`);
                   return (
-                    <div key={edge.id} className="rounded-md bg-panel px-3 py-2 text-xs text-body">
+                    <div key={edge.id} className="border border-hair bg-surface px-3 py-2 text-xs text-body">
                       <span className="font-medium text-ink">{isOutgoing ? "→" : "←"} {graphRelationLabel(edge.relation)}</span>
                       <span className="ml-2">{other?.title ?? edge.to_id}</span>
                     </div>
@@ -5761,7 +6165,7 @@ function layoutKnowledgeGraph(nodes: KnowledgeGraphNode[], edges: KnowledgeGraph
     requestedCenter ??
     [...nodes].sort((a, b) => (degrees.get(knowledgeGraphNodeKey(b)) ?? 0) - (degrees.get(knowledgeGraphNodeKey(a)) ?? 0))[0];
   const centerNodeKey = knowledgeGraphNodeKey(resolvedCenter);
-  positions.set(centerNodeKey, { x: 360, y: 190 });
+  positions.set(centerNodeKey, { x: 220, y: 205 });
   const neighborKeys = new Set<string>();
   for (const edge of edges) {
     const fromKey = `${edge.from_type}:${edge.from_id}`;
@@ -5771,8 +6175,14 @@ function layoutKnowledgeGraph(nodes: KnowledgeGraphNode[], edges: KnowledgeGraph
   }
   const neighbors = nodes.filter((node) => neighborKeys.has(knowledgeGraphNodeKey(node)));
   const remaining = nodes.filter((node) => knowledgeGraphNodeKey(node) !== centerNodeKey && !neighborKeys.has(knowledgeGraphNodeKey(node)));
-  placeGraphRing(positions, neighbors, 360, 190, neighbors.length > 10 ? 145 : 122, -Math.PI / 2);
-  placeGraphRing(positions, remaining, 360, 190, 184, Math.PI / 9);
+  placeGraphRing(positions, neighbors, 220, 205, neighbors.length > 10 ? 88 : 100, -Math.PI / 2);
+  placeGraphRing(positions, remaining, 220, 205, 158, Math.PI / 9);
+  for (const [key, value] of positions) {
+    positions.set(key, {
+      x: Math.max(44, Math.min(396, value.x)),
+      y: Math.max(44, Math.min(346, value.y))
+    });
+  }
   return positions;
 }
 
@@ -5826,32 +6236,23 @@ function graphRelationLabel(relation: string) {
 
 function graphNodeStyle(type: string) {
   const styles: Record<string, { fill: string; stroke: string }> = {
-    issue: { fill: "#fef3c7", stroke: "#d97706" },
-    pull_request: { fill: "#ccfbf1", stroke: "#0f766e" },
-    ci_run: { fill: "#fee2e2", stroke: "#dc2626" },
-    team_member: { fill: "#e0e7ff", stroke: "#4f46e5" },
-    memory_note: { fill: "#fce7f3", stroke: "#be185d" },
-    document: { fill: "#dbeafe", stroke: "#2563eb" },
-    code_file: { fill: "#dcfce7", stroke: "#16a34a" },
-    session_decision: { fill: "#f3e8ff", stroke: "#9333ea" }
+    issue: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--honey))" },
+    pull_request: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--mint))" },
+    ci_run: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--blush))" },
+    team_member: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--ink) / .65)" },
+    memory_note: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--prism) / .75)" },
+    document: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--dim))" },
+    code_file: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--mint) / .72)" },
+    session_decision: { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--prism))" }
   };
-  return styles[type] ?? { fill: "#f1f5f9", stroke: "#64748b" };
+  return styles[type] ?? { fill: "rgb(var(--surface-2))", stroke: "rgb(var(--dim))" };
 }
 
 function graphRelationColor(relation: string) {
-  const colors: Record<string, string> = {
-    resolves: "#16a34a",
-    mentions: "#64748b",
-    assigned_to: "#4f46e5",
-    blocked_by: "#dc2626",
-    failed_in_ci: "#ef4444",
-    touches_file: "#0f766e",
-    documents: "#2563eb",
-    cites: "#be185d",
-    produced_from_session: "#9333ea",
-    used_as_evidence: "#f97316"
-  };
-  return colors[relation] ?? "#64748b";
+  if (relation === "used_as_evidence") return "rgb(var(--prism))";
+  if (relation === "failed_in_ci" || relation === "blocked_by") return "rgb(var(--blush) / .72)";
+  if (relation === "resolves") return "rgb(var(--mint) / .72)";
+  return "rgb(var(--dim) / .72)";
 }
 
 function graphStatNumber(graph: KnowledgeGraphResponse | null, key: string, fallback: number) {
@@ -5859,8 +6260,80 @@ function graphStatNumber(graph: KnowledgeGraphResponse | null, key: string, fall
   return typeof value === "number" ? value : fallback;
 }
 
-function clipGraphLabel(text: string, limit: number) {
-  return text.length <= limit ? text : `${text.slice(0, limit - 1).trim()}…`;
+function wrapGraphLabel(text: string, perLine: number, maxLines = 2) {
+  const chars = [...text];
+  const lines: string[] = [];
+  for (let index = 0; index < maxLines && index * perLine < chars.length; index += 1) {
+    const start = index * perLine;
+    const end = Math.min(start + perLine, chars.length);
+    const truncated = end < chars.length && index === maxLines - 1;
+    lines.push(truncated ? `${chars.slice(start, end - 1).join("")}…` : chars.slice(start, end).join(""));
+  }
+  return lines.length ? lines : [""];
+}
+
+function measureGraphText(text: string, fontSize: number) {
+  let width = 0;
+  for (const char of text) {
+    width += /[⺀-鿿＀-￯]/.test(char) ? fontSize : fontSize * 0.56;
+  }
+  return width;
+}
+
+function computeGraphLabelHiding(
+  nodes: KnowledgeGraphNode[],
+  edges: KnowledgeGraphEdge[],
+  positions: Map<string, { x: number; y: number }>,
+  selectedKey: string
+) {
+  const hidden = new Set<string>();
+  const occupied: Array<{ self: string; x1: number; y1: number; x2: number; y2: number }> = [];
+  for (const node of nodes) {
+    const pos = positions.get(knowledgeGraphNodeKey(node));
+    if (!pos) continue;
+    occupied.push({ self: knowledgeGraphNodeKey(node), x1: pos.x - 10, y1: pos.y - 10, x2: pos.x + 10, y2: pos.y + 10 });
+  }
+  const degree = new Map<string, number>();
+  for (const node of nodes) degree.set(knowledgeGraphNodeKey(node), 0);
+  for (const edge of edges) {
+    const fromKey = `${edge.from_type}:${edge.from_id}`;
+    const toKey = `${edge.to_type}:${edge.to_id}`;
+    if (degree.has(fromKey)) degree.set(fromKey, (degree.get(fromKey) ?? 0) + 1);
+    if (degree.has(toKey)) degree.set(toKey, (degree.get(toKey) ?? 0) + 1);
+  }
+  const ordered = [...nodes].sort((left, right) => {
+    const leftKey = knowledgeGraphNodeKey(left);
+    const rightKey = knowledgeGraphNodeKey(right);
+    const rank = (node: KnowledgeGraphNode, key: string) => (key === selectedKey ? 0 : node.highlighted ? 1 : 2);
+    const diff = rank(left, leftKey) - rank(right, rightKey);
+    if (diff !== 0) return diff;
+    return (degree.get(rightKey) ?? 0) - (degree.get(leftKey) ?? 0);
+  });
+  for (const node of ordered) {
+    const key = knowledgeGraphNodeKey(node);
+    const pos = positions.get(key);
+    if (!pos) continue;
+    if (key === selectedKey) continue;
+    const lines = wrapGraphLabel(node.title, 7);
+    const width = Math.max(...lines.map((line) => measureGraphText(line, 11.5))) + 5;
+    const labelX = pos.x < 70 ? pos.x - 12 : pos.x > 370 ? pos.x + 12 : pos.x;
+    const x1 = pos.x < 70 ? labelX - 2 : pos.x > 370 ? labelX - width - 2 : labelX - width / 2 - 2;
+    const height = lines.length === 2 ? 38 : 26;
+    const below = pos.y >= 205;
+    const box = {
+      self: key,
+      x1,
+      y1: below ? pos.y + 12 : pos.y - 12 - height,
+      x2: x1 + width + 4,
+      y2: below ? pos.y + 12 + height : pos.y - 12
+    };
+    const collides = occupied.some(
+      (other) => other.self !== key && box.x1 < other.x2 + 1 && box.x2 > other.x1 - 1 && box.y1 < other.y2 + 1 && box.y2 > other.y1 - 1
+    );
+    if (collides) hidden.add(key);
+    else occupied.push(box);
+  }
+  return hidden;
 }
 
 function classifyIssue(issue: Issue) {

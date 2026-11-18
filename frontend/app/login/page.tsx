@@ -6,57 +6,18 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { apiPost } from "@/lib/api";
 import { setSession } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { BrandMark, Wordmark } from "@/components/layout/app-shell";
 
 interface LoginResponse {
   token: string;
   username: string;
 }
 
-/** 棱镜折射装饰：低饱和光谱细线，替代高饱和渐变色块 */
-function PrismRefraction() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      {/* 纸感底色（随主题）——从暗到明的克制过渡 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-prism/[0.06] via-transparent to-accent/[0.04]" />
-      {/* 折射光束：三条极细的半透明斜带 */}
-      <div
-        className="absolute -inset-y-20 left-[-30%] w-[26%] rotate-[18deg] bg-gradient-to-r from-transparent via-prism/[0.10] to-transparent blur-[1px]"
-        style={{ animation: "fade-in 1.4s cubic-bezier(0.22,1,0.36,1) 0.1s both" }}
-      />
-      <div
-        className="absolute -inset-y-20 left-[8%] w-[16%] rotate-[18deg] bg-gradient-to-r from-transparent via-accent/[0.14] to-transparent blur-[1px]"
-        style={{ animation: "fade-in 1.4s cubic-bezier(0.22,1,0.36,1) 0.25s both" }}
-      />
-      <div
-        className="absolute -inset-y-20 left-[26%] w-[10%] rotate-[18deg] bg-gradient-to-r from-transparent via-mint/[0.12] to-transparent blur-[1px]"
-        style={{ animation: "fade-in 1.4s cubic-bezier(0.22,1,0.36,1) 0.4s both" }}
-      />
-      {/* 三棱镜线稿 */}
-      <svg
-        className="absolute right-[14%] top-[18%] opacity-50"
-        width="120"
-        height="104"
-        viewBox="0 0 120 104"
-        fill="none"
-        style={{ animation: "float 9s ease-in-out infinite" }}
-      >
-        <path d="M60 8L112 96H8L60 8Z" stroke="rgb(var(--prism) / 0.45)" strokeWidth="1" strokeLinejoin="round" />
-        <path d="M38 54L82 54" stroke="rgb(var(--prism) / 0.25)" strokeWidth="1" />
-        <path d="M82 54L104 44M82 54L104 54M82 54L104 64" stroke="rgb(var(--prism) / 0.22)" strokeWidth="0.8" />
-      </svg>
-      {/* 底部发丝网格 */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-1/3 opacity-40"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgb(var(--hair)/0.6) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--hair)/0.6) 1px, transparent 1px)",
-          backgroundSize: "32px 32px",
-          maskImage: "linear-gradient(to top, black, transparent)"
-        }}
-      />
-    </div>
-  );
-}
+const capabilities = [
+  ["01", "Pull Request", "PR / Issue 审查与协作是系统主战场"],
+  ["02", "Multi-Agent", "Planner、审查、排障、综合各自折射一个视角"],
+  ["03", "A2A Protocol", "Agent2Agent 协议让多 Agent 以标准帧对话"]
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -81,118 +42,117 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="glass relative w-full max-w-5xl overflow-hidden rounded-[26px] shadow-float md:grid md:min-h-[560px] md:grid-cols-[1.05fr_1fr]">
-        {/* 品牌区：低饱和棱镜折射 + 编辑级排版 */}
-        <div className="relative hidden flex-col justify-between overflow-hidden border-r border-hair bg-panel/60 p-12 md:flex">
-          <PrismRefraction />
-
-          <div className="relative flex items-start justify-between">
-            <svg width="42" height="42" viewBox="0 0 26 26" fill="none" aria-hidden>
-              <path d="M13 2L24 21H2L13 2Z" stroke="rgb(var(--prism) / 0.8)" strokeWidth="1.4" strokeLinejoin="round" />
-              <path d="M13 7L19.5 18.5H6.5L13 7Z" fill="rgb(var(--prism) / 0.18)" />
-              <path d="M2 21H24" stroke="rgb(var(--prism) / 0.8)" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-            <span className="rounded-full border border-hair bg-surface/70 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-mute backdrop-blur">
-              v0.1 · Console
-            </span>
+    <main className="login-page">
+      <section className="login-story" aria-labelledby="login-brand-title">
+        <div className="login-story-top">
+          <div className="flex items-center gap-3 text-prism">
+            <BrandMark size={34} />
+            <Wordmark />
           </div>
+          <span className="mono-eyebrow">AI engineering / 2026</span>
+        </div>
 
-          <div className="relative reveal-lines">
-            <h1
-              className="font-display text-[clamp(3rem,5vw,4.4rem)] font-semibold leading-[0.95] tracking-tighter2 text-ink"
-            >
-              <span className="reveal-line">PR<span className="spectrum-text italic">ism</span></span>
-            </h1>
-            <div className="spectrum-rule mt-5 w-24 origin-left animate-line-grow" />
-            <p className="reveal-line mt-6 max-w-sm text-[15px] leading-relaxed text-body">
-              一束需求光，折射出完整的工程洞察。
-              <span className="text-mute">Issue 分析、PR 审查、CI 排障与知识问答，尽在一个工作台。</span>
-            </p>
-          </div>
+        <div className="login-hero-copy">
+          <div className="mono-eyebrow mb-7 text-prism">PR / Pull Request + Prism / 光谱折射</div>
+          <h1 id="login-brand-title">
+            一束需求光，<br />
+            <em>折射工程全谱。</em>
+          </h1>
+          <p>
+            <strong className="font-medium text-ink">PRism AI</strong>：面向 GitHub 研发协作的多智能体平台，基于 A2A 协议实现跨 Agent 对话与任务委派。
+            Issue 分析、PR 审查、CI 排障与知识问答，从同一束工作输入折射而出。
+          </p>
+        </div>
 
-          <div className="relative flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.2em] text-dim">
-            <span className="h-px w-8 bg-hair" />
-            AI Dev Collaboration Platform
+        <div className="login-prism-study" aria-hidden>
+          <svg viewBox="0 0 560 230" fill="none">
+            <path d="M46 170h148" stroke="currentColor" strokeWidth="1" />
+            <path d="m279 25 118 180H161L279 25Z" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M46 170 232 132" stroke="currentColor" strokeWidth="1.2" />
+            <path d="m232 132 91 13 171-70M323 145l171 0M323 145l171 70" stroke="currentColor" strokeWidth="1" />
+            <path d="m323 145 171-34" stroke="currentColor" strokeWidth=".8" strokeDasharray="3 5" />
+            <circle cx="232" cy="132" r="3" fill="currentColor" />
+            <circle cx="323" cy="145" r="3" fill="currentColor" />
+          </svg>
+          <span>ONE BEAM IN</span>
+          <span>FULL SPECTRUM OUT</span>
+          <div className="login-spectrum-legend">
+            <span>ISSUE</span><span>PR REVIEW</span><span>CI DEBUG</span><span>RAG / MEMORY</span>
           </div>
         </div>
 
-        {/* 表单区 */}
-        <div className="animate-fade-in relative flex flex-col justify-center bg-surface/80 p-9 sm:p-12">
-          <div className="absolute right-6 top-6 md:hidden">
-            <ThemeToggle />
-          </div>
-
-          <div className="md:hidden mb-8">
-            <div className="font-display text-2xl font-semibold tracking-tight2 text-ink">
-              PR<span className="spectrum-text italic">ism</span>
+        <div className="login-capabilities">
+          {capabilities.map(([index, title, description]) => (
+            <div key={index}>
+              <span>{index}</span>
+              <strong>{title}</strong>
+              <p>{description}</p>
             </div>
+          ))}
+        </div>
+
+        <p className="login-tagline">One beam of work in, a full spectrum of engineering insight out.</p>
+      </section>
+
+      <section className="login-form-panel" aria-labelledby="login-form-title">
+        <div className="login-form-top">
+          <span className="mono-eyebrow">Private workspace</span>
+          <ThemeToggle />
+        </div>
+
+        <div className="login-form-wrap">
+          <div className="mb-10 md:hidden">
+            <div className="flex items-center gap-2.5 text-prism"><BrandMark size={29} /><Wordmark /></div>
+            <p className="mt-5 max-w-xs font-display text-2xl leading-snug text-ink">一束需求光，<em className="text-prism">折射工程全谱。</em></p>
           </div>
 
-          <div className="mono-eyebrow">Sign in / 01</div>
-          <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight2 text-ink">登录工作台</h2>
-          <p className="mt-2.5 text-sm leading-relaxed text-mute">使用管理员账号继续，会话将保存在本机。</p>
+          <div className="mono-eyebrow text-prism">Sign in / 01</div>
+          <h2 id="login-form-title">欢迎回来</h2>
+          <p className="login-form-intro">进入你的研发智能工作台。会话仅保存在当前浏览器。</p>
 
-          <form onSubmit={handleSubmit} className="mt-9 grid gap-5">
-            <label className="grid gap-2">
-              <span className="text-xs font-medium uppercase tracking-[0.08em] text-mute">账号</span>
+          <form onSubmit={handleSubmit} className="mt-10 grid gap-7">
+            <label className="login-field">
+              <span>账号 / Username</span>
               <input
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
                 placeholder="admin"
-                className="h-12 rounded-xl border border-hair bg-panel/60 px-4 text-sm text-ink placeholder:text-dim transition-all duration-500 ease-silk focus:border-prism/50 focus:bg-surface"
                 required
+                autoFocus
               />
             </label>
-            <label className="grid gap-2">
-              <span className="text-xs font-medium uppercase tracking-[0.08em] text-mute">密码</span>
+            <label className="login-field">
+              <span>密码 / Password</span>
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
-                placeholder="••••••••"
-                className="h-12 rounded-xl border border-hair bg-panel/60 px-4 text-sm text-ink placeholder:text-dim transition-all duration-500 ease-silk focus:border-prism/50 focus:bg-surface"
+                placeholder="输入密码"
                 required
               />
             </label>
 
-            {error && (
-              <div className="animate-fade-up rounded-xl border border-blush/25 bg-blush/[0.06] px-4 py-3 text-sm text-blush" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <div className="login-error" role="alert">{error}</div>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="group magnetic sheen mt-2 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-prism px-5 text-sm font-medium text-white shadow-lift transition-all duration-500 ease-silk hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  登录中…
-                </>
-              ) : (
-                <>
-                  进入工作台
-                  <ArrowRight size={16} strokeWidth={1.8} className="transition-transform duration-500 ease-silk group-hover:translate-x-1" />
-                </>
-              )}
+            <button type="submit" disabled={loading} className="login-submit magnetic">
+              <span>{loading ? "正在进入工作台" : "进入工作台"}</span>
+              {loading ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} strokeWidth={1.6} />}
             </button>
           </form>
 
-          <div className="mt-8 flex items-start gap-2 border-t border-hair pt-5 text-xs leading-relaxed text-dim">
-            <span className="glow-dot mt-1 shrink-0" />
-            <span>
-              演示账号 <span className="font-mono text-mute">admin / prism2026</span>
-              <span className="mx-1.5 text-hair">·</span>
-              可在 <span className="font-mono text-mute">.env</span> 中修改
-            </span>
+          <div className="login-demo-note">
+            <span className="status-dot mt-1.5 shrink-0" />
+            <p>演示账号 <code>admin / prism2026</code><br />可在服务端环境变量中修改。</p>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div className="login-form-footer">
+          <span>PRism Console</span>
+          <span>Secure · Local session</span>
+        </div>
+      </section>
+    </main>
   );
 }

@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FileText, FolderGit2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { apiGet, apiPost } from "@/lib/api";
 import type { Repository } from "@/lib/types";
-import { Card, PageTitle, PrimaryButton } from "@/components/ui/card";
+import { PageTitle, PrimaryButton } from "@/components/ui/card";
 import { AppSelect } from "@/components/ui/select";
 
 type Workspace = {
@@ -82,17 +84,23 @@ export default function WorkspacesPage() {
 
   return (
     <>
-      <PageTitle title="团队工作区" description="把多个仓库聚合成 workspace，生成跨仓库研发周报和风险概览。" />
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-8rem)]">
-        <Card>
-          <label className="text-sm font-medium text-body">
-            Workspace 名称
-            <input className="mt-2 w-full rounded-xl border border-hair bg-surface-2/60 px-3 py-2.5 text-sm text-ink outline-none transition focus:border-prism/40" value={name} onChange={(event) => setName(event.target.value)} />
+      <PageTitle eyebrow="04 / Team workspace" title="团队工作区" description="把多个仓库聚合成 workspace，生成跨仓库研发周报和风险概览。" />
+      <div className="page-grid grid-cols-[380px_minmax(0,1fr)]">
+        <section className="page-column">
+          <div className="page-kicker">Workspace / 01</div>
+          <h2 className="page-section-title">团队工作区</h2>
+          <p className="page-section-note">把多个仓库聚合成一个研究与汇报边界。</p>
+          <label className="page-form-field mt-7">
+            <span>Workspace 名称</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
-          <div className="mono-eyebrow mt-6">仓库</div>
-          <div className="mt-2 grid gap-2">
+          <div className="mt-5 flex items-baseline justify-between">
+            <div className="mono-eyebrow !mb-0">仓库</div>
+            <span className="font-mono text-[11px] tabular-nums text-mute">已选 {selectedRepos.length}/{repos.length}</span>
+          </div>
+          <div className="mt-2 space-y-2">
             {repos.map((repo) => (
-              <label key={repo.id} className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-hair bg-surface px-3 py-2.5 text-sm text-body transition-all duration-500 ease-silk hover:border-prism/30">
+              <label key={repo.id} className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-hair bg-surface px-3 py-2.5 text-sm text-body transition-all duration-500 ease-silk hover:border-prism/30 has-[:checked]:border-prism/40 has-[:checked]:bg-teal-50/60">
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded accent-prism"
@@ -104,16 +112,22 @@ export default function WorkspacesPage() {
                 <span className="min-w-0 break-all">{repo.full_name}</span>
               </label>
             ))}
+            {repos.length === 0 && (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/50 px-4 py-8 text-center">
+                <FolderGit2 size={22} strokeWidth={1.6} className="text-dim" />
+                <div className="text-sm font-medium text-body">还没有仓库</div>
+                <div className="text-xs leading-5 text-mute">先到工作台连接一个 GitHub 仓库。</div>
+              </div>
+            )}
           </div>
-          <PrimaryButton className="mt-5" disabled={loading || selectedRepos.length === 0} onClick={createWorkspace}>
+          <PrimaryButton className="mt-4" disabled={loading || selectedRepos.length === 0} onClick={createWorkspace}>
             创建 Workspace
           </PrimaryButton>
 
-          <div className="mt-6 grid gap-4 border-t border-hair pt-5">
-            <label className="text-sm font-medium text-body">
-              报表范围
+          <div className="mt-5 grid gap-3 border-t border-hair pt-5">
+            <label className="page-form-field">
+              <span>报表范围</span>
               <AppSelect
-                className="mt-2 w-full"
                 value={workspaceId}
                 onChange={setWorkspaceId}
                 options={[
@@ -122,47 +136,85 @@ export default function WorkspacesPage() {
                 ]}
               />
             </label>
-            <input className="rounded-xl border border-hair bg-surface-2/60 px-3 py-2.5 text-sm text-ink outline-none transition focus:border-prism/40" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-            <input className="rounded-xl border border-hair bg-surface-2/60 px-3 py-2.5 text-sm text-ink outline-none transition focus:border-prism/40" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="page-form-field">
+                <span>开始日期</span>
+                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+              </label>
+              <label className="page-form-field">
+                <span>结束日期</span>
+                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+              </label>
+            </div>
             <PrimaryButton disabled={loading || (!workspaceId && selectedRepos.length === 0)} onClick={generateReport}>
               生成多仓库周报
             </PrimaryButton>
           </div>
-        </Card>
+        </section>
 
-        <div className="grid min-h-0 gap-5 lg:grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)]">
-          <Card className="flex min-h-0 flex-col">
-            <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Workspace 列表</h2>
-            <div className="spectrum-rule mt-2.5 w-10" />
-            <div className="mt-4 grid gap-2">
-              {workspaces.map((item) => (
-                <div key={item.id} className="rounded-xl border border-hair bg-panel px-3.5 py-2.5 text-sm text-body transition hover:border-prism/30">
-                  {item.name} · <span className="font-mono tabular-nums text-mute">{item.repo_ids.length}</span> 个仓库
+        <section className="page-column page-column-stack">
+          <div className="stack-block">
+            <div className="stack-head">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <div className="page-kicker">Directory / 02</div>
+                  <h2 className="page-section-title">Workspace 列表</h2>
                 </div>
-              ))}
-              {workspaces.length === 0 && (
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/50 px-4 py-8 text-center">
-                  <FolderGit2 size={22} strokeWidth={1.6} className="text-dim" />
-                  <div className="text-sm font-medium text-body">暂无 workspace</div>
-                  <div className="max-w-[240px] text-xs leading-5 text-mute">在左侧命名并勾选仓库，创建第一个团队工作区。</div>
+                <span className="font-mono text-[11px] tabular-nums text-mute">
+                  {workspaces.length} 个工作区 · 覆盖 {new Set(workspaces.flatMap((item) => item.repo_ids)).size} 个仓库
+                </span>
+              </div>
+            </div>
+            <div className="stack-body">
+              <div className="space-y-2">
+                {workspaces.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-hair bg-panel px-3.5 py-2.5 text-sm text-body transition hover:border-prism/30">
+                    <span className="min-w-0 break-words">{item.name}</span>
+                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-mute">{item.repo_ids.length} 个仓库</span>
+                  </div>
+                ))}
+                {workspaces.length === 0 && (
+                  <div className="page-empty">
+                    <div>
+                      <FolderGit2 size={22} strokeWidth={1.6} className="mx-auto text-dim" />
+                      <div className="mt-2 text-sm font-medium text-body">暂无 workspace</div>
+                      <div className="mx-auto mt-1 max-w-[280px] text-xs leading-5 text-mute">在左侧命名并勾选仓库，创建第一个团队工作区。</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="stack-block">
+            <div className="stack-head">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <div className="page-kicker">Weekly digest / 03</div>
+                  <h2 className="page-section-title">多仓库周报</h2>
+                </div>
+                <span className="font-mono text-[11px] tabular-nums text-mute">
+                  {report ? `${startDate} → ${endDate}` : "等待生成"}
+                </span>
+              </div>
+            </div>
+            <div className="stack-body">
+              {report ? (
+                <div className="markdown-body text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.report_markdown}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="page-empty">
+                  <div>
+                    <FileText size={22} strokeWidth={1.6} className="mx-auto text-dim" />
+                    <div className="mt-2 text-sm font-medium text-body">周报将在这里生成</div>
+                    <div className="mx-auto mt-1 max-w-[320px] text-xs leading-5 text-mute">创建 workspace 或直接勾选仓库，选择时间范围后生成跨仓库研发周报。</div>
+                  </div>
                 </div>
               )}
             </div>
-          </Card>
-          <Card className="flex min-h-0 flex-col">
-            <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">多仓库周报</h2>
-            <div className="spectrum-rule mt-2.5 w-10" />
-            {report ? (
-              <pre className="mt-4 min-h-0 flex-1 overflow-auto rounded-xl border border-hair bg-canvas p-4 font-mono text-xs leading-7 text-ink">{report.report_markdown}</pre>
-            ) : (
-              <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-hair bg-surface-2/50 px-4 py-8 text-center">
-                <FileText size={22} strokeWidth={1.6} className="text-dim" />
-                <div className="text-sm font-medium text-body">周报将在这里生成</div>
-                <div className="max-w-[260px] text-xs leading-5 text-mute">创建 workspace 或直接勾选仓库，选择时间范围后生成跨仓库研发周报。</div>
-              </div>
-            )}
-          </Card>
-        </div>
+          </div>
+        </section>
       </div>
     </>
   );

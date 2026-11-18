@@ -65,6 +65,8 @@ class _FakeMilvusStore:
 def _install_fake_milvus(monkeypatch) -> _FakeMilvusStore:
     store = _FakeMilvusStore()
     monkeypatch.setattr("app.services.rag.vector_store._milvus_store", lambda: store)
+    # 测试不应依赖本地 .env 的 MILVUS_ENABLED 取值；这里强制与 Fake Milvus 保持一致。
+    monkeypatch.setattr(settings, "milvus_enabled", True)
     return store
 
 

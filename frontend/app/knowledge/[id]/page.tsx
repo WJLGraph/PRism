@@ -204,8 +204,8 @@ export default function KnowledgeBaseDetailPage() {
   if (!knowledge || !config) return <div className="m-6 rounded-xl border border-blush/30 bg-blush/10 p-4 text-sm text-blush">{error || "未找到仓库"}</div>;
 
   return (
-    <div className="min-h-[calc(100vh-74px)] bg-canvas">
-      <header className="animate-fade-up border-b border-hair bg-surface px-4 py-3.5">
+    <div className="detail-shell">
+      <header className="detail-head animate-fade-up border-b border-hair bg-surface px-4 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/knowledge" title="返回项目知识" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-hair text-body transition-all duration-500 ease-silk hover:border-prism/40 hover:text-prism"><ArrowLeft className="h-4 w-4" /></Link>
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal-50 text-prism"><BookOpen className="h-4 w-4" /></span>
@@ -219,8 +219,8 @@ export default function KnowledgeBaseDetailPage() {
         </div>
       </header>
 
-      <div className="grid min-h-[calc(100vh-135px)] md:grid-cols-[190px_minmax(0,1fr)]">
-        <aside className="animate-fade-in border-b border-hair bg-surface p-3 md:border-b-0 md:border-r">
+      <div className="detail-body">
+        <aside className="detail-aside animate-fade-in w-full shrink-0 border-b border-hair bg-surface p-3 md:w-[190px] md:border-b-0 md:border-r">
           <nav className="flex gap-1 overflow-x-auto scrollbar-none md:block md:space-y-1">
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -250,7 +250,7 @@ export default function KnowledgeBaseDetailPage() {
           </div>
         </aside>
 
-        <main className="animate-fade-in stagger-1 min-w-0 p-4 sm:p-6">
+        <main className="detail-main animate-fade-in stagger-1 min-w-0 p-4 sm:p-6">
           {error ? <div className="animate-fade-in mb-5 flex items-center justify-between rounded-xl border border-blush/30 bg-blush/10 px-4 py-3 text-sm text-blush"><span>{error}</span><button onClick={() => setError("")} title="关闭"><X className="h-4 w-4" /></button></div> : null}
 
           {tab === "documents" ? (

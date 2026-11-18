@@ -16,6 +16,8 @@ from app.services.agents.synthesis_agent import SynthesisAgent
 
 WorkflowTaskRunner = Callable[[WorkflowTask, WorkflowSpec, dict[str, Any]], Awaitable[WorkflowTaskResult | dict[str, Any]]]
 
+A2A_EXECUTOR_SCHEME = "a2a://"
+
 
 class WorkflowOrchestrator(BaseAgent):
     name = "workflow_orchestrator"
@@ -225,20 +227,24 @@ class WorkflowOrchestrator(BaseAgent):
         context: dict[str, Any],
     ) -> WorkflowTaskResult:
         started_at = datetime.now(timezone.utc)
-        runner = self.task_runners.get(task.task_type)
-        if runner is None:
-            return WorkflowTaskResult(
-                task_id=task.id,
-                agent_name=task.agent_name,
-                task_type=task.task_type,
-                status="skipped",
-                summary=f"没有为 {task.task_type} 注册任务执行器。",
-                started_at=started_at,
-                completed_at=datetime.now(timezone.utc),
-            )
+        if task.executor and task.executor.strip().lower().startswith(A2A_EXECUTOR_SCHEME):
+            runner_coro: Awaitable[WorkflowTaskResult | dict[str, Any]] = self._run_a2a_task(task, spec, context)
+        else:
+            runner = self.task_runners.get(task.task_type)
+            if runner is None:
+                return WorkflowTaskResult(
+                    task_id=task.id,
+                    agent_name=task.agent_name,
+                    task_type=task.task_type,
+                    status="skipped",
+                    summary=f"没有为 {task.task_type} 注册任务执行器。",
+                    started_at=started_at,
+                    completed_at=datetime.now(timezone.utc),
+                )
+            runner_coro = runner(task, spec, context)
         try:
             raw_result = await asyncio.wait_for(
-                runner(task, spec, context),
+                runner_coro,
                 timeout=self._task_timeout_seconds(context),
             )
             result = raw_result if isinstance(raw_result, WorkflowTaskResult) else WorkflowTaskResult.model_validate(raw_result)
@@ -254,6 +260,59 @@ class WorkflowOrchestrator(BaseAgent):
             )
         except Exception as exc:
             return self._error_result(task, str(exc), started_at=started_at, error_kind="task_runtime_error")
+
+    async def _run_a2a_task(
+        self,
+        task: WorkflowTask,
+        spec: WorkflowSpec,
+        context: dict[str, Any],
+    ) -> WorkflowTaskResult:
+        """executor=a2a://<endpoint> 时把任务经 message/send 委派给远端 A2A Agent。"""
+        started_at = datetime.now(timezone.utc)
+        endpoint = task.executor[len(A2A_EXECUTOR_SCHEME):].strip().rstrip("/")  # type: ignore[union-attr]
+        if not settings.a2a_enabled:
+            return self._error_result(
+                task,
+                "A2A 未启用（A2A_ENABLED=false），无法把任务委派给远端 Agent。",
+                started_at=started_at,
+                error_kind="a2a_disabled",
+            )
+        if not endpoint:
+            return self._error_result(
+                task,
+                "executor 缺少有效的 a2a:// 端点。",
+                started_at=started_at,
+                error_kind="a2a_invalid_endpoint",
+            )
+        # 延迟导入避免 a2a 客户端在模块加载期引入 httpx 等依赖。
+        from app.a2a.client import A2AClientError, extract_answer_text, send_message
+
+        metadata = {
+            "workflow_id": spec.workflow_id,
+            "task_id": task.id,
+            "goal": spec.goal,
+            "trigger_message": spec.trigger_message,
+        }
+        raw = await send_message(endpoint, task.objective, metadata)
+        answer = extract_answer_text(raw) or "远端 Agent 未返回文本产物。"
+        status = raw.get("status") if isinstance(raw.get("status"), dict) else {}
+        return WorkflowTaskResult(
+            task_id=task.id,
+            agent_name=task.agent_name,
+            task_type=task.task_type,
+            status="success",
+            summary=answer[:600],
+            output={
+                "answer": answer,
+                "a2a_endpoint": endpoint,
+                "a2a_result_kind": str(raw.get("kind") or "task"),
+                "a2a_task_state": str(status.get("state") or ""),
+                "executor": f"{A2A_EXECUTOR_SCHEME}{endpoint}",
+            },
+            evidence_count=0,
+            confidence=0.6,
+            citations=[{"type": "a2a_agent", "id": endpoint, "title": endpoint}],
+        )
 
     def _error_result(
         self,
@@ -362,11 +421,20 @@ class WorkflowOrchestrator(BaseAgent):
     ) -> list[dict[str, Any]]:
         calls = [
             {
-                "tool_name": f"workflow.{result.task_type}",
+                "tool_name": (
+                    "a2a.invoke_agent"
+                    if isinstance(result.output, dict) and result.output.get("a2a_endpoint")
+                    else f"workflow.{result.task_type}"
+                ),
                 "arguments": {
                     "workflow_id": spec.workflow_id,
                     "task_id": result.task_id,
                     "agent": result.agent_name,
+                    **(
+                        {"endpoint": result.output["a2a_endpoint"]}
+                        if isinstance(result.output, dict) and result.output.get("a2a_endpoint")
+                        else {}
+                    ),
                 },
                 "status": result.status,
                 "error": result.error,
@@ -435,6 +503,10 @@ class WorkflowOrchestrator(BaseAgent):
             )
             for result in record["results"]:
                 skill_runtime = result.output.get("_skill_runtime") if isinstance(result.output, dict) else None
+                task_executor = next(
+                    (task.executor for task in spec.tasks if task.id == result.task_id and task.executor),
+                    None,
+                )
                 events.append(
                     {
                         "type": "workflow_task_result",
@@ -447,6 +519,7 @@ class WorkflowOrchestrator(BaseAgent):
                         "summary": result.summary,
                         "confidence": result.confidence,
                         "evidence_count": result.evidence_count,
+                        **({"executor": task_executor} if task_executor else {}),
                         **(
                             {
                                 key: value

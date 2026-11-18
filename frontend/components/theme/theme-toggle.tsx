@@ -14,7 +14,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={toggleTheme}
       title={isDark ? "切换到浅色主题" : "切换到深色主题"}
       aria-label={isDark ? "切换到浅色主题" : "切换到深色主题"}
-      className={`group relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-hair bg-surface/70 text-mute transition-all duration-500 ease-silk hover:border-prism/40 hover:text-prism ${className}`}
+      className={`group relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border border-hair bg-transparent text-mute transition-colors duration-300 hover:border-ink/30 hover:text-ink ${className}`}
     >
       <Sun
         size={16}

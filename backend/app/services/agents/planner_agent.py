@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.a2a.client import trusted_agent_endpoints
+from app.core.config import settings
 from app.schemas.workflow import WorkflowClaim, WorkflowObservation, WorkflowSpec, WorkflowTask, WorkflowTaskResult
 from app.services.agents.base import BaseAgent
 
@@ -97,13 +99,18 @@ class PlannerAgent(BaseAgent):
                 )
             )
 
-        if context.get("enable_rag_task") or self._mentions_history(lowered):
+        mentions_code = self._mentions_code(lowered)
+        if context.get("enable_rag_task") or self._mentions_history(lowered) or mentions_code:
             tasks.append(
                 WorkflowTask(
                     id="rag_search",
                     agent_name="rag_context_agent",
                     task_type="rag_search",
-                    objective="检索与目标相关的历史 Issue、PR、失败 CI 日志、项目文档和已批准知识。",
+                    objective=(
+                        "检索代码库与项目文档，定位可改进点并给出代码质量提升建议。"
+                        if self._mentions_code(lowered)
+                        else "检索与目标相关的历史 Issue、PR、失败 CI 日志、项目文档和已批准知识。"
+                    ),
                     dependencies=["repo_health"] if self._has_task(tasks, "repo_health") else [],
                     claim=WorkflowClaim(
                         target_type="knowledge",
@@ -131,6 +138,29 @@ class PlannerAgent(BaseAgent):
                     critical=True,
                 )
             )
+
+        # 用户显式要求远端协作时，把主问题经 A2A 协议委派给受信远端 Agent（executor=a2a://）。
+        if settings.a2a_enabled and (broad or self._mentions_remote(lowered)):
+            for index, endpoint in enumerate(trusted_agent_endpoints()):
+                tasks.append(
+                    WorkflowTask(
+                        id="a2a_delegate" if index == 0 else f"a2a_delegate_{index + 1}",
+                        agent_name="a2a_remote_agent",
+                        task_type="a2a_delegate",
+                        executor=f"a2a://{endpoint}",
+                        objective=(
+                            f"把「{(message or '当前工程问题')[:400]}」作为任务委派给远端 A2A Agent {endpoint}，"
+                            "等待其 message/send 结果并原样回收结论与引用。"
+                        ),
+                        dependencies=["repo_health"] if self._has_task(tasks, "repo_health") else [],
+                        claim=WorkflowClaim(
+                            target_type="repository",
+                            target_id=context.get("repo_id"),
+                            allowed_sources=["user_request", "repository_snapshot"],
+                            reason="远端委派仍以当前仓库上下文为边界，结果由 Observer 交叉检查。",
+                        ),
+                    )
+                )
 
         if len(tasks) == 1 and tasks[0].task_type == "repo_health":
             if context.get("has_pr"):
@@ -321,6 +351,33 @@ class PlannerAgent(BaseAgent):
 
     def _mentions_history(self, text: str) -> bool:
         return any(token in text for token in ["history", "similar", "rag", "knowledge", "历史", "相似", "知识库", "记忆"])
+
+    def _mentions_code(self, text: str) -> bool:
+        return any(
+            token in text
+            for token in [
+                "code",
+                "refactor",
+                "quality",
+                "tech debt",
+                "improve",
+                "代码",
+                "重构",
+                "质量",
+                "提升",
+                "优化",
+                "改进",
+                "技术债",
+                "坏味道",
+                "规范",
+            ]
+        )
+
+    def _mentions_remote(self, text: str) -> bool:
+        return any(
+            token in text
+            for token in ["a2a", "远端", "远程", "remote", "委派", "delegate", "外部 agent", "另一个 agent", "其他 agent"]
+        )
 
     def _is_broad_engineering_question(self, text: str) -> bool:
         return any(

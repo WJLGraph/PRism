@@ -32,6 +32,8 @@ class WorkflowTask(BaseModel):
     claim: WorkflowClaim
     input_hint: dict[str, Any] = Field(default_factory=dict)
     critical: bool = False
+    # 可选执行器：形如 a2a://<endpoint> 时，任务委派给远端 A2A Agent 执行，不走本地 task_runners。
+    executor: str | None = None
 
 
 class WorkflowSpec(BaseModel):

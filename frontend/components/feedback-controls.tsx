@@ -119,7 +119,7 @@ export function FeedbackControls({
           <ThumbsDown className="h-4 w-4" />
         </button>
         {feedback && !panelOpen && (
-          <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-mute">
+          <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-mute" aria-live="polite">
             <Check className="h-3.5 w-3.5 shrink-0 text-mint" />
             已记录
             {feedback.run_id && <span className="truncate font-mono text-[11px] text-dim">trace {feedback.run_id.slice(0, 8)}</span>}
@@ -162,12 +162,13 @@ export function FeedbackControls({
             value={comment}
             maxLength={1000}
             rows={2}
+            aria-label="反馈补充说明"
             onChange={(event) => setComment(event.target.value)}
             placeholder="补充说明（可选）"
             className="mt-3 w-full resize-y rounded-lg border border-hair bg-surface-2/60 px-3 py-2 text-xs leading-6 text-ink outline-none transition focus:border-prism/40"
           />
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="text-xs text-blush">{error}</span>
+            <span className="text-xs text-blush" role="alert">{error}</span>
             <button
               type="button"
               disabled={pending}

@@ -260,7 +260,7 @@ export default function RAGPage() {
   }
 
   return (
-    <div className="-m-3 flex min-h-[calc(100vh-53px)] flex-col bg-canvas lg:h-[calc(100vh-53px)] lg:overflow-hidden">
+    <div className="rag-shell flex h-[100dvh] min-h-[620px] flex-col overflow-hidden bg-canvas">
       <header className="animate-fade-up flex flex-wrap items-center justify-between gap-3 border-b border-hair bg-surface px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-prism text-white shadow-lift">
@@ -293,7 +293,7 @@ export default function RAGPage() {
         </div>
       </header>
 
-      <div className="animate-fade-up stagger-1 grid border-b border-hair bg-surface sm:grid-cols-2 lg:grid-cols-5">
+      <div className="animate-fade-up stagger-1 grid border-b border-hair bg-surface sm:grid-cols-2 lg:grid-cols-[0.72fr_0.66fr_1.05fr_1.28fr_1.29fr]">
         <StatusItem label="资料" value={`${status?.source_count ?? 0} 份`} />
         <StatusItem label="切片" value={`${status?.document_count ?? 0} 条`} />
         <StatusItem label="Embedding" value={status ? `${status.embedding.provider} · ${status.embedding.dimensions}d` : "-"} />
@@ -322,8 +322,8 @@ export default function RAGPage() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[300px_minmax(420px,1fr)_340px] lg:overflow-hidden">
-        <aside className="animate-fade-up stagger-2 flex min-h-[360px] flex-col border-r border-hair bg-panel">
+      <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[200px_minmax(0,1fr)_210px] lg:overflow-hidden xl:grid-cols-[250px_minmax(0,1fr)_280px] 2xl:grid-cols-[290px_minmax(0,1fr)_330px]">
+        <aside className="animate-fade-up stagger-2 flex min-h-[360px] flex-col border-r border-hair bg-panel lg:min-h-0">
           <div className="flex items-center justify-between border-b border-hair px-4 py-3">
             <div className="mono-eyebrow flex items-center gap-2 text-prism"><Database className="h-3.5 w-3.5" />知识库</div>
             <button type="button" onClick={reindex} disabled={!repoId || busy === "reindex"} title="重建向量索引" aria-label="重建向量索引" className="flex h-8 w-8 items-center justify-center rounded-lg text-mute transition-colors hover:bg-surface disabled:opacity-50">
@@ -356,7 +356,7 @@ export default function RAGPage() {
           </div>
         </aside>
 
-        <main className="animate-fade-up stagger-2 flex min-h-[520px] min-w-0 flex-col bg-surface">
+        <main className="animate-fade-up stagger-2 flex min-h-[520px] min-w-0 flex-col bg-surface lg:min-h-0">
           <div className="flex items-center justify-between border-b border-hair px-4 py-3">
             <div className="mono-eyebrow flex items-center gap-2 text-prism"><Sparkles className="h-3.5 w-3.5" />问答</div>
             {turns.length > 0 && <button type="button" onClick={() => { setTurns([]); setSources([]); }} className="text-xs text-mute transition-colors hover:text-ink">清空会话</button>}
@@ -423,19 +423,20 @@ export default function RAGPage() {
               rows={3}
               className="w-full resize-none rounded-xl border border-hair bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-prism"
             />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <AppSelect value={sourceType} onChange={setSourceType} className="h-9" ariaLabel="资料类型" options={[{ value: "", label: "全部资料" }, ...availableSourceTypes.map((type) => ({ value: type, label: sourceLabel(type) }))]} />
-              <label className="flex h-9 items-center gap-2 rounded-lg border border-hair bg-surface px-2 text-xs text-body">Top K
-                <AppSelect value={String(topK)} onChange={(value) => setTopK(Number(value))} className="w-16 [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-1 [&_button]:py-0 [&_button]:text-sm [&_button]:font-medium [&_button]:text-ink" options={[3, 5, 8, 10].map((value) => ({ value: String(value), label: String(value) }))} />
+            <div className="mt-2 flex flex-nowrap items-center gap-1.5">
+              <AppSelect value={sourceType} onChange={setSourceType} className="h-9 w-[100px] shrink-0" ariaLabel="资料类型" options={[{ value: "", label: "全部资料" }, ...availableSourceTypes.map((type) => ({ value: type, label: sourceLabel(type) }))]} />
+              <label className="flex h-9 shrink-0 items-center gap-1 rounded-xl border border-hair bg-surface px-2 text-[11px] text-body" title="每次检索返回的证据条数">
+                <span className="whitespace-nowrap text-mute">Top K</span>
+                <AppSelect value={String(topK)} onChange={(value) => setTopK(Number(value))} className="h-7 w-11 shrink-0 [&_button]:rounded-lg [&_button]:border-0 [&_button]:bg-surface-2/70 [&_button]:px-1.5 [&_button]:py-0 [&_button]:text-xs [&_button]:font-semibold [&_button]:text-ink" options={[3, 5, 8, 10].map((value) => ({ value: String(value), label: String(value) }))} />
               </label>
-              <div className="flex-1" />
-              <button type="button" title="只检索证据" onClick={searchOnly} disabled={!repoId || !question.trim() || Boolean(busy)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-hair bg-surface text-body transition-colors hover:bg-panel disabled:opacity-40"><Search className="h-4 w-4" /></button>
-              <button type="button" onClick={ask} disabled={!repoId || !question.trim() || Boolean(busy)} className="sheen inline-flex h-9 items-center gap-2 rounded-xl bg-prism px-4 text-sm font-medium text-white shadow-lift transition-all duration-500 ease-silk hover:bg-accent disabled:opacity-40"><Send className="h-4 w-4" />提问</button>
+              <div className="min-w-0 flex-1" />
+              <button type="button" title="只检索证据" onClick={searchOnly} disabled={!repoId || !question.trim() || Boolean(busy)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-hair bg-surface text-body transition-colors hover:bg-panel disabled:opacity-40"><Search className="h-4 w-4" /></button>
+              <button type="button" onClick={ask} disabled={!repoId || !question.trim() || Boolean(busy)} className="sheen inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-prism px-3 text-sm font-medium text-white shadow-lift transition-all duration-500 ease-silk hover:bg-accent disabled:opacity-40"><Send className="h-4 w-4" />提问</button>
             </div>
           </div>
         </main>
 
-        <aside className="animate-fade-up stagger-3 flex min-h-[360px] flex-col border-l border-hair bg-panel">
+        <aside className="animate-fade-up stagger-3 flex min-h-[360px] flex-col border-l border-hair bg-panel lg:min-h-0">
           <div className="flex items-center justify-between border-b border-hair px-4 py-3">
             <div className="mono-eyebrow flex items-center gap-2 text-prism"><Search className="h-3.5 w-3.5" />检索证据</div>
             <span className="font-mono text-xs text-mute">{sources.length} 条</span>
@@ -465,9 +466,9 @@ export default function RAGPage() {
 
 function StatusItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0 border-r border-hair px-4 py-2.5 last:border-r-0">
-      <div className="mono-eyebrow">{label}</div>
-      <div className="mt-1 break-all font-display text-base font-semibold tracking-tight2 tabular-nums text-ink">
+    <div className="min-w-0 border-b border-r border-hair px-3 py-2.5 last:border-r-0 sm:border-b-0">
+      <div className="mono-eyebrow whitespace-nowrap">{label}</div>
+      <div className="mt-1 break-words font-display text-[12.5px] font-semibold leading-[1.35] tracking-tight2 tabular-nums text-ink">
         {value}
       </div>
     </div>

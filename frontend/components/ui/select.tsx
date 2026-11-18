@@ -2,17 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 export interface AppSelectOption {
   value: string;
   label: string;
 }
 
-/**
- * 自定义下拉选择：替代原生 <select>（原生弹层由浏览器渲染，无法样式化）。
- * props 与原生用法对齐：value / onChange(value) / options，迁移成本最低。
- */
 export function AppSelect({
   value,
   onChange,
@@ -29,8 +25,18 @@ export function AppSelect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<"up" | "down">("down");
   const rootRef = useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.value === value);
+
+  function toggle() {
+    if (!open && rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setPlacement(spaceBelow < 250 && rect.top > spaceBelow ? "up" : "down");
+    }
+    setOpen((current) => !current);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -56,36 +62,34 @@ export function AppSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className={clsx(
-          "flex w-full items-center justify-between gap-2 rounded-xl border border-hair bg-surface px-3 py-2 text-sm text-body transition-all duration-500 ease-silk hover:border-prism/40 disabled:cursor-not-allowed disabled:opacity-60",
-          open && "border-prism/50 shadow-glow"
-        )}
+        onClick={toggle}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) toggle();
+          }
+        }}
+        className={clsx("app-select-trigger", open && "is-open")}
       >
         <span className={clsx("truncate", !selected && "text-dim")}>{selected?.label ?? value}</span>
-        <ChevronDown
-          size={14}
-          className={clsx("shrink-0 text-dim transition-transform duration-500 ease-silk", open && "rotate-180 text-prism")}
-        />
+        <ChevronDown size={14} strokeWidth={1.5} className={clsx("shrink-0 text-dim transition-transform duration-300", open && "rotate-180 text-prism")} />
       </button>
       {open && (
-        <div className="absolute z-40 mt-1.5 max-h-60 w-full animate-fade-up overflow-y-auto rounded-xl border border-hair bg-surface p-1.5 shadow-float">
+        <div role="listbox" aria-label={ariaLabel} className={clsx("app-select-menu", placement === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5")}>
           {options.map((option) => (
             <button
               key={option.value}
               type="button"
+              role="option"
+              aria-selected={option.value === value}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
               }}
-              className={clsx(
-                "block w-full truncate rounded-lg px-3 py-1.5 text-left text-sm transition-all duration-300",
-                option.value === value
-                  ? "bg-prism/10 font-medium text-prism"
-                  : "text-body hover:bg-surface-2 hover:text-ink"
-              )}
+              className={clsx("app-select-option", option.value === value && "is-selected")}
             >
-              {option.label}
+              <span className="truncate">{option.label}</span>
+              {option.value === value && <Check size={13} className="shrink-0" />}
             </button>
           ))}
         </div>

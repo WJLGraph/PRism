@@ -409,12 +409,14 @@ export default function EvalsPage() {
   return (
     <>
       <PageTitle
+        eyebrow="06 / RAGAS quality"
         title="ChatAgent RAGAS 质量工作台"
         description="使用固定评测集运行真实 ChatAgent，定位检索、生成和 Judge 问题，并完成重评分与回归对比。"
       />
 
-      <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="animate-fade-up rounded-2xl border border-hair bg-surface p-5 shadow-card">
+      <div className="evals-stage">
+        <div className="evals-primary">
+          <aside className="min-w-0">
           <div className="mono-eyebrow mb-4 flex items-center gap-2 text-prism">
             <Gauge className="h-3.5 w-3.5" />评测配置
           </div>
@@ -455,9 +457,9 @@ export default function EvalsPage() {
             {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {loading ? "后台任务运行中…" : "运行固定 RAGAS 评测"}
           </PrimaryButton>
-        </div>
+          </aside>
 
-        <div className="animate-fade-up stagger-1 min-w-0 rounded-2xl border border-hair bg-surface p-5 shadow-card">
+        <section className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hair pb-4">
             <div>
               <div className="mono-eyebrow mb-1.5 text-prism">Result</div>
@@ -527,13 +529,14 @@ export default function EvalsPage() {
               等待运行固定 RAGAS 评测
             </div>
           )}
+        </section>
         </div>
-      </section>
 
-      {result && !active && cases.length > 0 && <CaseDiagnostics cases={cases} />}
+        <div className="evals-lower" style={{ ["--lower-cols" as string]: String(1 + Number(Boolean(result && !active && cases.length > 0)) + Number(Boolean(result && !active))) } as React.CSSProperties}>
+          {result && !active && cases.length > 0 ? <CaseDiagnostics cases={cases} /> : null}
 
-      {result && !active && (
-        <section className="animate-fade-up mt-5 rounded-2xl border border-hair bg-surface p-5 shadow-card">
+          {result && !active ? (
+          <section className="min-w-0">
           <div className="mono-eyebrow mb-1.5 flex items-center gap-2 text-prism"><GitCompareArrows className="h-3.5 w-3.5" />Regression</div>
           <div className="font-display text-lg font-semibold tracking-tight2 text-ink">回归对比</div>
           <p className="mt-2 text-sm leading-relaxed text-body">选择一次历史运行作为基线。评测集 Hash、Judge、Ragas 和 Top-K 不一致时，系统会明确拒绝把结果当作严格对照。</p>
@@ -544,10 +547,10 @@ export default function EvalsPage() {
             </PrimaryButton>
           </div>
           {comparison && <ComparisonPanel comparison={comparison} />}
-        </section>
-      )}
+          </section>
+          ) : null}
 
-      <section className="animate-fade-up mt-5 rounded-2xl border border-hair bg-surface p-5 shadow-card">
+          <section className="min-w-0">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="mono-eyebrow mb-1.5 text-prism">Archive</div>
@@ -589,7 +592,9 @@ export default function EvalsPage() {
           </table>
           {history.length === 0 && <div className="py-6 text-sm text-mute">当前仓库暂无 RAGAS Eval。</div>}
         </div>
-      </section>
+          </section>
+        </div>
+      </div>
     </>
   );
 }
@@ -636,7 +641,7 @@ function DiagnosticOverview({ result }: { result: EvalResult }) {
 function CaseDiagnostics({ cases }: { cases: RagCaseResult[] }) {
   const ordered = [...cases].sort((left, right) => Number(casePassed(left)) - Number(casePassed(right)));
   return (
-    <section className="animate-fade-up mt-5 rounded-2xl border border-hair bg-surface p-5 shadow-card">
+    <section className="min-w-0">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="mono-eyebrow mb-1.5 flex items-center gap-2 text-prism"><SearchCheck className="h-3.5 w-3.5" />Case Report</div>
@@ -779,13 +784,13 @@ function ProgressPanel({ progress, runMode }: { progress?: EvalResult["progress"
   }, []);
 
   return (
-    <div className="flex min-h-72 items-center justify-center py-8">
+    <div className="flex min-h-72 items-center justify-center py-8" aria-live="polite">
       <div className="w-full max-w-xl rounded-2xl border border-prism/30 bg-prism/[0.06] p-6 shadow-card">
         <div className="flex items-start gap-3">
           <LoaderCircle className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-prism" />
           <div className="min-w-0 flex-1"><div className="font-display text-base font-semibold tracking-tight2 text-ink">{runMode === "rescore" ? "正在复用现场重试 Judge 指标" : "真实 ChatAgent 正在后台评测"}</div><p className="mt-2 text-sm leading-6 text-body">{progress?.message || "后台任务正在启动。"}</p></div>
         </div>
-        <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-prism/15"><div className="h-full rounded-full bg-prism transition-all duration-500 ease-silk" style={{ width: `${percent}%` }} /></div>
+        <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-prism/15" role="progressbar" aria-valuemin={0} aria-valuemax={Math.max(total, 1)} aria-valuenow={completed} aria-label="评测进度"><div className="h-full rounded-full bg-prism transition-all duration-500 ease-silk" style={{ width: `${percent}%` }} /></div>
         <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-mute"><span>{total > 0 ? `已完成 ${completed}/${total}` : "正在准备"}</span><span>阶段持续 {stageSeconds} 秒 · 更新于 {updated}</span></div>
         <div className="mt-4 rounded-xl border border-hair bg-surface/80 p-3 text-xs leading-5 text-body">{runMode === "rescore" ? "本任务不会重新调用 ChatAgent，原问题、答案、证据和工具轨迹保持不变。" : "单条用例包含真实 ChatAgent 工具调用和 RAGAS Judge 评分。任务在后台运行，可以刷新或离开页面。"}</div>
       </div>

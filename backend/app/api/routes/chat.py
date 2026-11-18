@@ -173,6 +173,7 @@ async def chat_history(
             "progressive_compaction": (item.meta or {}).get("progressive_compaction", {}),
             "model_usage": (item.meta or {}).get("model_usage", []),
             "context_diagnostics": (item.meta or {}).get("context_diagnostics", {}),
+            "a2a_group": bool((item.meta or {}).get("a2a_group")),
             "created_at": item.created_at.isoformat() if item.created_at else None,
         }
         for item in rows
@@ -846,12 +847,15 @@ def _build_engineering_workflow_runtime(
             mode="hybrid",
             metadata={"route": "workflow_rag_task", "task_id": task.id},
         )
+        preview = (answer or "").strip()
+        if len(preview) > 800:
+            preview = f"{preview[:800]}…"
         return WorkflowTaskResult(
             task_id=task.id,
             agent_name=task.agent_name,
             task_type=task.task_type,
             status="success",
-            summary=f"Retrieved {len(citations)} related historical records.",
+            summary=f"Retrieved {len(citations)} related records.\n{preview}".strip(),
             output={"answer": answer, "citations": citations},
             evidence_count=len(citations),
             confidence=0.68 if citations else 0.45,
@@ -1546,6 +1550,7 @@ async def _conversation_plan_execute_sse(payload: ChatPlanExecuteRequest, db: Se
                 "context_diagnostics": result.get("context_diagnostics", {}),
                 "compression_stats": assembled.compression_stats,
                 "progressive_compaction": compaction_stats,
+                "a2a_group": bool((payload.context or {}).get("a2a_group")),
             },
         )
         result["message_id"] = str(assistant_message.id)

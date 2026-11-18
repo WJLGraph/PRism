@@ -4,6 +4,7 @@ from typing import Any
 
 from app.schemas.workflow import WorkflowObservation, WorkflowSpec, WorkflowTaskResult
 from app.services.agents.base import BaseAgent
+from app.services.llm.client import LLMClient
 
 
 class SynthesisAgent(BaseAgent):
@@ -11,12 +12,57 @@ class SynthesisAgent(BaseAgent):
     description = "将多 Agent 工作流综合成一份工程决策备忘录。"
     available_tools = ["synthesize_workflow_report"]
 
+    def __init__(self, llm: LLMClient | None = None) -> None:
+        self.llm = llm or LLMClient()
+
     async def run(self, input_data: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
         spec = WorkflowSpec.model_validate(input_data["spec"])
         results = [WorkflowTaskResult.model_validate(item) for item in input_data.get("task_results") or []]
         observation = WorkflowObservation.model_validate(input_data["observation"])
-        answer = self._build_answer(spec, results, observation)
+        # 优先用 LLM 基于各 Agent 真实产出直接回答用户问题；不可用时降级为结构化模板。
+        answer = await self._llm_answer(spec, results, observation)
+        if not answer:
+            answer = self._build_answer(spec, results, observation)
         return {"answer": answer}
+
+    async def _llm_answer(
+        self,
+        spec: WorkflowSpec,
+        results: list[WorkflowTaskResult],
+        observation: WorkflowObservation,
+    ) -> str:
+        agent_outputs = "\n".join(
+            f"- [{item.agent_name}/{item.task_type}] ({item.status}): {item.summary or '无产出'}"
+            for item in results
+        )
+        findings = (
+            "\n".join(
+                f"- [{finding.severity}] {finding.message}（建议：{finding.recommendation}）"
+                for finding in observation.findings
+            )
+            or "- 无"
+        )
+        system_prompt = (
+            "你是多智能体工程团队的汇总 Agent。各成员 Agent 已经完成各自的分析，"
+            "你的职责是基于他们的真实产出，直接回答用户的问题。"
+            "要求：1) 第一段直接给出针对用户问题的结论或建议；"
+            "2) 引用各成员 Agent 的具体发现作为依据（注明是哪个 Agent 的结论）；"
+            "3) 用中文 Markdown 输出（可用二级标题和列表），不要复述协作流程、不要输出任务图；"
+            "4) 证据不足时明确说明还需要什么信息。"
+        )
+        user_message = (
+            f"用户问题：{spec.goal}\n\n"
+            f"各 Agent 产出：\n{agent_outputs}\n\n"
+            f"Observer 复核发现（置信度 {observation.overall_confidence:.2f}）：\n{findings}"
+        )
+        try:
+            text = await self.llm.chat_text(system_prompt, user_message)
+        except Exception:
+            return ""
+        if not text or not text.strip():
+            return ""
+        footer = f"\n\n---\n*Observer 置信度 {observation.overall_confidence:.2f} · 本结论由主控 Agent 汇总各成员真实产出生成。*"
+        return text.strip() + footer
 
     def _build_answer(self, spec: WorkflowSpec, results: list[WorkflowTaskResult], observation: WorkflowObservation) -> str:
         blockers = [item for item in observation.findings if item.severity == "blocker"]

@@ -12,9 +12,9 @@ import { ThemeProvider } from "@/components/theme/theme-provider";
 import { MotionProvider } from "@/components/theme/motion-provider";
 
 export const metadata: Metadata = {
-  title: "PRism — AI 研发协作智能体平台",
+  title: "PRism AI — 面向研发团队的多智能体协作平台",
   description:
-    "PRism：面向 GitHub 研发团队的多智能体协作平台。Issue 分类、PR 审查、CI 排障、RAG 知识问答与工程周报，一束需求光折射出完整的工程洞察。"
+    "PRism AI（PR 棱镜）：面向 GitHub 研发协作的多智能体平台，基于 A2A 协议实现跨 Agent 对话与任务委派。一束需求光，折射出 Issue 分析、PR 审查、CI 排障、知识问答与工程洞察。"
 };
 
 /** 首屏防闪烁：在绘制前读取本地/系统主题并落到 html 上 */
@@ -47,10 +47,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         }}
       >
         <div className="ambient-root" aria-hidden>
-          <div className="ambient-grid" />
-          <div className="ambient-orb ambient-orb-indigo" />
-          <div className="ambient-orb ambient-orb-cyan" />
-          <div className="ambient-beam" />
           <div className="ambient-grain" />
         </div>
         <ThemeProvider>

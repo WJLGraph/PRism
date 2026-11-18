@@ -63,6 +63,7 @@ export function RetrievalSettings({ value, catalog, onChange, showChunking = tru
           Embedding 模型
           <AppSelect
             className="mt-1.5 h-10"
+            ariaLabel="Embedding 模型"
             value={`${value.embedding_provider}::${value.embedding_model}`}
             onChange={(next) => {
               const [provider, model] = next.split("::");
@@ -91,6 +92,7 @@ export function RetrievalSettings({ value, catalog, onChange, showChunking = tru
               <button
                 key={method.value}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => update("retrieval_method", method.value)}
                 className={`relative min-h-28 rounded-xl border p-3.5 text-left transition-all duration-500 ease-silk ${selected ? "border-prism/60 bg-prism/10 shadow-glow" : "border-hair bg-surface hover:border-prism/30 hover:bg-panel"}`}
               >
@@ -124,6 +126,7 @@ export function RetrievalSettings({ value, catalog, onChange, showChunking = tru
         {value.rerank_enabled ? (
           <AppSelect
             className="mt-3 h-10"
+            ariaLabel="Rerank 模型"
             value={`${value.rerank_provider}::${value.rerank_model}`}
             onChange={(next) => {
               const [provider, model] = next.split("::");
@@ -144,17 +147,17 @@ export function RetrievalSettings({ value, catalog, onChange, showChunking = tru
         <label className="text-xs font-medium text-body">
           Top K
           <div className="mt-2.5 flex items-center gap-3">
-            <input type="range" min={1} max={10} value={value.top_k} onChange={(event) => update("top_k", Number(event.target.value))} className="min-w-0 flex-1 accent-prism" />
-            <input type="number" min={1} max={20} value={value.top_k} onChange={(event) => update("top_k", Number(event.target.value))} className="h-9 w-16 rounded-lg border border-hair bg-surface text-center text-sm tabular-nums text-ink outline-none transition-colors focus:border-prism" />
+            <input type="range" aria-label="Top K 滑杆" min={1} max={10} value={value.top_k} onChange={(event) => update("top_k", Number(event.target.value))} className="min-w-0 flex-1 accent-prism" />
+            <input type="number" aria-label="Top K 数值" min={1} max={20} value={value.top_k} onChange={(event) => update("top_k", Number(event.target.value))} className="h-9 w-16 rounded-lg border border-hair bg-surface text-center text-sm tabular-nums text-ink outline-none transition-colors focus:border-prism" />
           </div>
         </label>
         <div>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-body">Score 阈值</span>
-            <input type="checkbox" checked={value.score_threshold_enabled} onChange={(event) => update("score_threshold_enabled", event.target.checked)} className="h-4 w-4 accent-prism" />
+            <input type="checkbox" aria-label="启用分数阈值" checked={value.score_threshold_enabled} onChange={(event) => update("score_threshold_enabled", event.target.checked)} className="h-4 w-4 accent-prism" />
           </div>
           <div className="mt-2.5 flex items-center gap-3">
-            <input type="range" min={0} max={1} step={0.01} disabled={!value.score_threshold_enabled} value={value.score_threshold} onChange={(event) => update("score_threshold", Number(event.target.value))} className="min-w-0 flex-1 accent-prism disabled:opacity-40" />
+            <input type="range" aria-label="分数阈值" min={0} max={1} step={0.01} disabled={!value.score_threshold_enabled} value={value.score_threshold} onChange={(event) => update("score_threshold", Number(event.target.value))} className="min-w-0 flex-1 accent-prism disabled:opacity-40" />
             <span className="w-12 text-right font-mono text-sm tabular-nums text-body">{value.score_threshold.toFixed(2)}</span>
           </div>
         </div>
