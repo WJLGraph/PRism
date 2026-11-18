@@ -15,15 +15,15 @@ export function Card({ className, children }: { className?: string; children: Re
 
 export function PageTitle({ title, description }: { title: string; description: string }) {
   return (
-    <div className="animate-fade-up breath-bottom mb-5 border-b border-hair pb-5">
-      <div className="mono-eyebrow mb-2.5">Overview</div>
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
-        <h1 className="font-display text-[clamp(1.6rem,2.4vw,2.1rem)] font-semibold leading-tight tracking-tight2 text-ink">
+    <div className="animate-fade-up mb-5 flex h-[66px] flex-col justify-end">
+      <div className="mono-eyebrow !mb-1">Overview</div>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+        <h1 className="font-display text-[clamp(1.45rem,2.2vw,1.9rem)] font-semibold leading-[1.1] tracking-tight2 text-ink">
           {title}
         </h1>
         <p className="max-w-2xl text-xs leading-relaxed text-mute">{description}</p>
       </div>
-      <div className="spectrum-rule mt-3.5 w-full origin-left animate-line-grow" />
+      <div className="spectrum-rule mt-2.5 w-full origin-left animate-line-grow" />
     </div>
   );
 }

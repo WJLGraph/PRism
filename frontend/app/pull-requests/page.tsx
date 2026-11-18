@@ -40,7 +40,7 @@ export default function PullRequestsPage() {
   return (
     <>
       <PageTitle title="PR Review 助手" description="读取 changed files 和 diff，生成 PR 摘要、风险点、Review Checklist 与测试建议。" />
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-13.5rem)]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-8rem)]">
         <Card className="animate-fade-up stagger-1 flex min-h-0 flex-col">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Pull Requests</h2>

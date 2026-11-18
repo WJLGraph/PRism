@@ -361,8 +361,38 @@ export default function RAGPage() {
             <div className="mono-eyebrow flex items-center gap-2 text-prism"><Sparkles className="h-3.5 w-3.5" />问答</div>
             {turns.length > 0 && <button type="button" onClick={() => { setTurns([]); setSources([]); }} className="text-xs text-mute transition-colors hover:text-ink">清空会话</button>}
           </div>
-          <div ref={qaScrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5">
-            {turns.length === 0 && <EmptyPanel icon={BookOpen} label={status?.document_count ? "输入问题开始检索" : "上传资料后开始提问"} />}
+          <div ref={qaScrollRef} className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-5">
+            {turns.length === 0 && (
+              <div className="my-auto flex flex-col items-center gap-4 py-10 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-prism/40 bg-prism/5">
+                  <BookOpen className="h-6 w-6 text-prism/70" />
+                </span>
+                <div>
+                  <div className="font-display text-lg font-semibold tracking-tight2 text-ink">
+                    {status?.document_count ? "知识库已就绪" : "知识库还是空的"}
+                  </div>
+                  <p className="mt-1.5 max-w-sm text-sm leading-6 text-mute">
+                    {status?.document_count
+                      ? "提出关于项目资料的问题，系统会检索证据并生成带引用的回答。"
+                      : "先在左侧上传资料或同步项目文档，再开始提问。"}
+                  </p>
+                </div>
+                {status?.document_count ? (
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {["项目里有哪些核心模块？", "总结最近的 Issue 进展", "README 里说明了什么？"].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => setQuestion(suggestion)}
+                        className="rounded-full border border-hair bg-surface px-3 py-1.5 text-xs text-body transition-all duration-500 ease-silk hover:border-prism/40 hover:text-ink"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
             {turns.map((turn) => (
               <div key={turn.id} className={turn.role === "user" ? "ml-auto max-w-[82%]" : "max-w-[92%]"}>
                 <div className={`rounded-2xl px-4 py-3 text-sm leading-7 ${turn.role === "user" ? "bg-prism text-white shadow-lift" : "border border-hair bg-panel text-ink shadow-card"}`}>
@@ -410,8 +440,8 @@ export default function RAGPage() {
             <div className="mono-eyebrow flex items-center gap-2 text-prism"><Search className="h-3.5 w-3.5" />检索证据</div>
             <span className="font-mono text-xs text-mute">{sources.length} 条</span>
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-            {sources.length === 0 && <EmptyPanel icon={Search} label="暂无检索结果" />}
+          <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto p-3">
+            {sources.length === 0 && <EmptyPanel icon={Search} label="暂无检索结果" hint="提问或点击「只检索」后，命中的证据片段会出现在这里。" />}
             {sources.map((source) => (
               <article key={`${source.document_id}:${source.citation}`} className="card-lift rounded-xl border border-hair bg-surface p-3 shadow-card">
                 <div className="flex items-start gap-2">
@@ -444,11 +474,12 @@ function StatusItem({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function EmptyPanel({ icon: Icon, label }: { icon: typeof Search; label: string }) {
+function EmptyPanel({ icon: Icon, label, hint }: { icon: typeof Search; label: string; hint?: string }) {
   return (
-    <div className="flex min-h-36 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-hair bg-surface/60 p-4 text-center text-sm text-mute">
+    <div className="my-auto flex min-h-36 flex-1 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-hair bg-surface/60 p-6 text-center text-sm text-mute">
       <Icon className="h-5 w-5 text-dim" />
       <span className="mono-eyebrow">{label}</span>
+      {hint && <p className="max-w-[240px] text-xs leading-5 text-mute/80">{hint}</p>}
     </div>
   );
 }

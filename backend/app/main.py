@@ -80,6 +80,12 @@ def create_app() -> FastAPI:
     app.include_router(code_graph.router, prefix="/api", tags=["code_graph"])
     app.include_router(evaluations.router, prefix="/api/evals", tags=["evaluations"])
     app.include_router(webhooks.router, prefix="/api/webhooks", tags=["webhooks"])
+
+    if settings.a2a_enabled:
+        from app.a2a.server import build_a2a_app
+
+        app.mount("/a2a", build_a2a_app())
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "app": settings.app_name}

@@ -41,7 +41,7 @@ export default function CIPage() {
   return (
     <>
       <PageTitle title="CI Debug 分析" description="聚合 GitHub Actions 运行状态和失败日志，生成失败归因、排查步骤和相关风险提示。" />
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-13.5rem)]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-8rem)]">
         <Card className="animate-fade-up stagger-1 flex min-h-0 flex-col">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Workflow Runs</h2>

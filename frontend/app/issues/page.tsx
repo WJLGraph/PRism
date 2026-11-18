@@ -34,7 +34,7 @@ export default function IssuesPage() {
   return (
     <>
       <PageTitle title="Issue 智能分析" description="自动生成 Issue 分类、优先级、复杂度、负责人建议、相似问题和下一步行动项。" />
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-13.5rem)]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-8rem)]">
         <Card className="animate-fade-up stagger-1 flex min-h-0 flex-col">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold tracking-tight2 text-ink">Issue 列表</h2>

@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_env: str = "development"
-    app_name: str = "DevFlow AI"
+    app_name: str = "PRism"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     milvus_enabled: bool = True
     milvus_uri: str = "http://localhost:19530"
     milvus_token: str | None = None
-    milvus_collection: str = "devflow_rag_qwen1024"
+    milvus_collection: str = "prism_rag_qwen1024"
     rag_rerank_top_n: int = 24
     ragas_enabled: bool = True
     ragas_judge_api_key: str | None = None
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     context_tool_ratio: float = 0.10
     workflow_task_timeout_seconds: float = 90.0
     prompt_cache_enabled: bool = True
-    prompt_cache_key: str | None = "devflow-agent-v1"
+    prompt_cache_key: str | None = "prism-agent-v1"
     prompt_cache_retention: str | None = None
     repo_checkout_dir: str = ".data/repos"
     upload_dir: str = ".data/uploads"
@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     auto_sync_enabled: bool = True
     auto_sync_interval_seconds: int = 300
     auto_sync_limit: int = 50
+
+    a2a_enabled: bool = False
+    a2a_public_base_url: str | None = None
+    a2a_trusted_agents: str = ""
 
     model_config = SettingsConfigDict(env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore")
 

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.a2a.tools import a2a_tool_entries
 from app.db.models import ActionDraft, AgentRun, AgentTaskRun, AgentWorkflowRun, ChatMessage, Conversation, Issue, PullRequest, Repository, WorkflowRun
 from app.db.session import get_db
 from app.schemas.chat import ChatHistoryMessage, ChatPlanExecuteRequest, ChatRequest, ChatResponse, PromptRecommendationRequest, PromptRecommendationResponse
@@ -1309,6 +1310,7 @@ def _build_conversation_tools(repo: Repository | None, conversation: Conversatio
         "devflow_search_evidence": search_evidence_mcp,
         "devflow_get_thread_context": get_thread_context_mcp,
         "devflow_read_session_events": read_session_events_mcp,
+        **a2a_tool_entries(repo, conversation, db),
     }
 
 

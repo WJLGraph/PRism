@@ -83,7 +83,7 @@ export default function WorkspacesPage() {
   return (
     <>
       <PageTitle title="团队工作区" description="把多个仓库聚合成 workspace，生成跨仓库研发周报和风险概览。" />
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-13.5rem)]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[380px_1fr] lg:h-[calc(100vh-8rem)]">
         <Card>
           <label className="text-sm font-medium text-body">
             Workspace 名称

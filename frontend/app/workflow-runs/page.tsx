@@ -91,7 +91,7 @@ export default function WorkflowRunsPage() {
         <Metric icon={AlertTriangle} label="Observer 发现" value={findings.length} />
       </section>
 
-      <div className="mt-5 grid min-h-[560px] gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-13.5rem)] lg:min-h-0">
+      <div className="mt-5 grid min-h-[560px] gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-[calc(100vh-8rem)] lg:min-h-0">
         <aside className="animate-fade-up stagger-2 flex min-h-0 flex-col border-r border-hair bg-surface pr-5">
           <div className="mono-eyebrow mb-4">运行列表</div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -136,7 +136,7 @@ export default function WorkflowRunsPage() {
                   <h3 className="mono-eyebrow">Agent 执行链</h3>
                   <span className="font-mono text-xs text-mute">{completedTasks}/{selected.tasks.length} 完成</span>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-[repeat(auto-fill,minmax(230px,1fr))]">
                   {selected.tasks.map((task, index) => (
                     <div key={task.id} className="relative rounded-xl border border-hair bg-surface p-4 shadow-card card-lift hover:border-prism/30">
                       <div className="flex items-center justify-between gap-2">

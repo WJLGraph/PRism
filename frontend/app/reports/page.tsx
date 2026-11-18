@@ -59,7 +59,7 @@ export default function ReportsPage() {
     <>
       <PageTitle title="研发周报生成" description="按时间范围统计 Issues、PRs、Merged PRs、Open PRs 和失败 CI，生成适合发给团队负责人的 Markdown 周报。" />
 
-      <div className="animate-fade-up grid gap-5 lg:grid-cols-[360px_1fr] lg:h-[calc(100vh-13.5rem)]">
+      <div className="animate-fade-up grid gap-5 lg:grid-cols-[360px_1fr] lg:h-[calc(100vh-8rem)]">
         <Card>
           <div className="grid gap-5">
             <label className="text-sm font-medium text-body">

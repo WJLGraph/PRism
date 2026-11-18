@@ -53,7 +53,7 @@ export default function ChatPage() {
         title="Agent 对话"
         description="使用原生 tool calling 检查代码、检索项目记忆、运行专项分析，并起草安全操作。"
       />
-      <div className="lg:h-[calc(100vh-13.5rem)]">
+      <div className="lg:h-[calc(100vh-8rem)]">
         <Card className="animate-fade-up flex min-h-0 flex-col">
           <AppSelect
             className="mb-4 w-full"
