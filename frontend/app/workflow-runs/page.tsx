@@ -136,7 +136,7 @@ export default function WorkflowRunsPage() {
                   <h3 className="mono-eyebrow">Agent 执行链</h3>
                   <span className="font-mono text-xs text-mute">{completedTasks}/{selected.tasks.length} 完成</span>
                 </div>
-                <div className="grid gap-3 md:grid-cols-[repeat(auto-fill,minmax(230px,1fr))]">
+                <div className="grid gap-3 md:grid-cols-[repeat(auto-fit,minmax(230px,1fr))]">
                   {selected.tasks.map((task, index) => (
                     <div key={task.id} className="relative rounded-xl border border-hair bg-surface p-4 shadow-card card-lift hover:border-prism/30">
                       <div className="flex items-center justify-between gap-2">
