@@ -173,16 +173,18 @@ export function A2aWorkspace() {
   const pushFrame = (frame: A2aFrame) => setFrames((prev) => [...prev, frame].slice(-200));
 
   function resolveEndpoint(): string {
-    const base = peerBase.trim() || A2A_ENDPOINT;
+    const custom = peerBase.trim();
+    // 本机模式：始终走同源相对路径，避免卡片里返回 127.0.0.1 导致浏览器直连回环地址
+    if (!custom) return A2A_ENDPOINT;
     if (peerCard?.url) {
       try {
         const origin = typeof window === "undefined" ? "http://127.0.0.1:8001" : window.location.origin;
         return ensureTrailingSlash(new URL(peerCard.url, origin).toString());
       } catch {
-        /* 非法 url 时回退本机端点 */
+        /* 非法 url 时回退用户输入 */
       }
     }
-    return A2A_ENDPOINT;
+    return ensureTrailingSlash(custom);
   }
 
   async function discover() {
@@ -229,7 +231,7 @@ export function A2aWorkspace() {
     });
 
     const endpoint = resolveEndpoint();
-    const isLocal = /localhost|127\.0\.0\.1/.test(endpoint);
+    const isLocal = !/^https?:\/\//i.test(endpoint) || /localhost|127\.0\.0\.1/.test(endpoint);
 
     const handle = (parsed: unknown, raw: string) => {
       if (parsed === undefined || parsed === null) {
